@@ -79,6 +79,7 @@ Profil sahibi yöneticiye şunları ayrı ayrı açıp kapayabilir:
 - Günlük toplam işlem limiti (örn. günde max 2000 USD)
 - Sadece satış / sadece alış / her ikisi
 - İşlem onayı: her işlem öncesi profil sahibine bildirim gönder, onay iste (opsiyonel)
+- İşlem gerçekleşince profil sahibine bildirim gönderilir: kim yaptı, hangi coin, kaç USD, hangi borsa (zorunlu, kapatılamaz)
 
 ### Yönetici Deneyimi
 - Yönetici, izin verilen varlıkları ve limitleri görür
