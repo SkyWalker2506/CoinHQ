@@ -42,13 +42,13 @@ export default function AddProfileModal({ onClose, onCreated }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-0 sm:px-4">
       <div
         ref={trapRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-profile-modal-title"
-        className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md"
+        className="bg-gray-900 border border-gray-700 rounded-t-2xl sm:rounded-xl p-5 sm:p-6 w-full sm:max-w-md"
       >
         <h2 id="add-profile-modal-title" className="text-lg font-semibold text-white mb-4">Add Profile</h2>
         <form onSubmit={handleSubmit} className="space-y-4">

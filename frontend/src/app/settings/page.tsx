@@ -54,15 +54,13 @@ export default function SettingsPage() {
   return (
     <>
       <Navigation />
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-white mt-1">Settings</h1>
-        </div>
+      <div className="flex items-center justify-between mb-6 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Settings</h1>
         <button
           onClick={() => setShowAddProfile(true)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+          className="px-3 py-2 sm:px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
         >
           Add Profile
         </button>
@@ -78,7 +76,7 @@ export default function SettingsPage() {
         {profiles.map((profile) => (
           <div
             key={profile.id}
-            className="bg-gray-900 border border-gray-800 rounded-xl p-6"
+            className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6"
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-white">{profile.name}</h2>
@@ -99,7 +97,7 @@ export default function SettingsPage() {
               {(keys[profile.id] ?? []).map((key) => (
                 <div
                   key={key.id}
-                  className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2"
+                  className="flex items-center justify-between bg-gray-800 rounded-lg px-3 sm:px-4 py-2"
                 >
                   <div>
                     <span className="text-sm font-medium text-white capitalize">

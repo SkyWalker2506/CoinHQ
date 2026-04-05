@@ -1,6 +1,6 @@
 """
 Portfolio service: fetch balances from all exchanges for a profile,
-price them in USD via CoinGecko, cache results in Redis for 60s.
+price them in USD via exchange public APIs, cache results in Redis.
 """
 
 import asyncio
@@ -22,103 +22,15 @@ from app.schemas.portfolio import (
     PortfolioResponse,
     ProfilePortfolio,
 )
+from app.services.price_service import get_usd_prices
 
 _stdlib_logger = logging.getLogger(__name__)
-
-# CoinGecko symbol -> id mapping cache
-_SYMBOL_TO_ID: dict[str, str] = {}
-
-
-async def _get_usd_prices(
-    assets: list[str],
-    http_client: httpx.AsyncClient | None = None,
-    redis: aioredis.Redis | None = None,
-) -> dict[str, float]:
-    """Fetch USD prices from CoinGecko free API, with optional 30s Redis cache."""
-    if not assets:
-        return {}
-
-    cache_key = f"prices:{','.join(sorted(assets))}"
-    if redis is not None:
-        try:
-            cached = await redis.get(cache_key)
-            if cached:
-                return json.loads(cached)
-        except Exception as e:
-            _stdlib_logger.warning("Redis price cache read failed: %s", e)
-
-    # Common symbol overrides
-    overrides = {
-        "BTC": "bitcoin",
-        "ETH": "ethereum",
-        "BNB": "binancecoin",
-        "USDT": "tether",
-        "USDC": "usd-coin",
-        "SOL": "solana",
-        "XRP": "ripple",
-        "ADA": "cardano",
-        "DOGE": "dogecoin",
-        "TRX": "tron",
-        "DOT": "polkadot",
-        "MATIC": "matic-network",
-        "AVAX": "avalanche-2",
-        "LINK": "chainlink",
-        "LTC": "litecoin",
-        "UNI": "uniswap",
-        "ATOM": "cosmos",
-        "OP": "optimism",
-        "ARB": "arbitrum",
-        "SUI": "sui",
-    }
-
-    ids = []
-    asset_to_id = {}
-    for asset in assets:
-        upper = asset.upper()
-        if upper in overrides:
-            cg_id = overrides[upper]
-        else:
-            cg_id = upper.lower()
-        asset_to_id[upper] = cg_id
-        ids.append(cg_id)
-
-    try:
-        client = http_client or httpx.AsyncClient(timeout=10)
-        close_client = http_client is None
-        try:
-            resp = await client.get(
-                f"{settings.COINGECKO_BASE_URL}/simple/price",
-                params={"ids": ",".join(set(ids)), "vs_currencies": "usd"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        finally:
-            if close_client:
-                await client.aclose()
-    except Exception as e:
-        _stdlib_logger.warning("CoinGecko price fetch failed: %s", e)
-        return {}
-
-    prices: dict[str, float] = {}
-    for asset, cg_id in asset_to_id.items():
-        price = data.get(cg_id, {}).get("usd")
-        if price is not None:
-            prices[asset] = float(price)
-
-    # Cache prices for 30 seconds (COIN-22)
-    if redis is not None:
-        try:
-            await redis.setex(cache_key, 30, json.dumps(prices))
-        except Exception as e:
-            _stdlib_logger.warning("Redis price cache write failed: %s", e)
-
-    return prices
 
 
 async def _fetch_exchange_balance(
     key: ExchangeKey,
     http_client: httpx.AsyncClient | None = None,
-) -> list | None:
+) -> tuple | None:
     """Decrypt keys and fetch raw balances from an exchange (no pricing)."""
     try:
         api_key = decrypt(key.encrypted_key)
@@ -132,7 +44,9 @@ async def _fetch_exchange_balance(
         return None
 
 
-def _build_exchange_balance(exchange: str, balances: list, prices: dict[str, float]) -> ExchangeBalance:
+def _build_exchange_balance(
+    exchange: str, balances: list, prices: dict[str, float]
+) -> ExchangeBalance:
     """Apply prices to raw balances and return ExchangeBalance."""
     total_usd = 0.0
     priced_balances = []
@@ -178,7 +92,6 @@ async def get_portfolio(
         return_exceptions=True,
     )
 
-    # Collect all assets for a single bulk price request (COIN-13)
     exchange_raw: list[tuple] = []
     all_assets: list[str] = []
     for result in raw_results:
@@ -190,7 +103,9 @@ async def get_portfolio(
             exchange_raw.append((exchange_name, balances))
             all_assets.extend(b.asset for b in balances)
 
-    prices = await _get_usd_prices(list(set(all_assets)), http_client=http_client, redis=redis)
+    prices = await get_usd_prices(
+        list(set(all_assets)), http_client=http_client, redis_client=redis
+    )
 
     exchange_balances = [
         _build_exchange_balance(exchange_name, balances, prices)
@@ -218,12 +133,11 @@ async def get_portfolio(
 
 
 async def get_aggregate_portfolio(
-    profiles: list[tuple],  # List of (profile, keys)
+    profiles: list[tuple],
     redis: aioredis.Redis | None = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> AggregatePortfolioResponse:
     """Get aggregate portfolio across all profiles (parallel fetch)."""
-    # Fetch all profiles in parallel to avoid N+1 sequential awaits
     results = await asyncio.gather(
         *[
             get_portfolio(profile.id, profile.name, keys, redis=redis, http_client=http_client)

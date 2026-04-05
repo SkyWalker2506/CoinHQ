@@ -10,10 +10,20 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+function getAuthHeader(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+      ...(options?.headers as Record<string, string> | undefined),
+    },
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
@@ -32,7 +42,7 @@ export const createProfile = (name: string) =>
   });
 
 export const deleteProfile = (id: number) =>
-  fetch(`${BASE_URL}/api/v1/profiles/${id}`, { method: "DELETE" });
+  fetch(`${BASE_URL}/api/v1/profiles/${id}`, { method: "DELETE", headers: getAuthHeader() });
 
 // Exchange Keys
 export const getKeys = (profileId: number) =>
@@ -52,6 +62,7 @@ export const addKey = (
 export const deleteKey = (profileId: number, keyId: number) =>
   fetch(`${BASE_URL}/api/v1/profiles/${profileId}/keys/${keyId}`, {
     method: "DELETE",
+    headers: getAuthHeader(),
   });
 
 // Portfolio
@@ -74,7 +85,7 @@ export const createShareLink = (payload: ShareLinkCreate) =>
   });
 
 export const revokeShareLink = (id: number) =>
-  fetch(`${BASE_URL}/api/v1/share/${id}`, { method: "DELETE" });
+  fetch(`${BASE_URL}/api/v1/share/${id}`, { method: "DELETE", headers: getAuthHeader() });
 
 export const getPublicShare = (token: string) =>
   request<SharedPortfolioView>(`/api/v1/public/share/${token}`);

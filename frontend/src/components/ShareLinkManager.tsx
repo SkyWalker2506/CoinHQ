@@ -16,9 +16,14 @@ const BASE_URL =
     : process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 export default function ShareLinkManager({ profiles }: Props) {
-  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(
-    profiles[0]?.id ?? null
-  );
+  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+
+  // Set default profile once profiles load
+  useEffect(() => {
+    if (selectedProfileId === null && profiles.length > 0) {
+      setSelectedProfileId(profiles[0].id);
+    }
+  }, [profiles, selectedProfileId]);
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [createdLink, setCreatedLink] = useState<ShareLink | null>(null);

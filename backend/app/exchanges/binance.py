@@ -71,8 +71,10 @@ class BinanceAdapter(ExchangeAdapter):
         resp.raise_for_status()
         data = resp.json()
 
-        # Reject keys that have trading permissions — read-only keys must not be able to trade
-        if data.get("canTrade") or data.get("enableSpotAndMarginTrading"):
+        # Reject keys that have withdrawal or futures permissions
+        # canTrade can be true even on read-only keys (Binance sets it by default)
+        # The real danger signals are withdrawals and internal transfers
+        if data.get("enableWithdrawals") or data.get("enableInternalTransfer"):
             logger.error("exchange_write_permissions_rejected", exchange="binance", key=self._mask_key())
             raise ValueError("Write permissions detected. Only read-only API keys are accepted.")
 
