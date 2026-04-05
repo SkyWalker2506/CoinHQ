@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { SharedPortfolioView } from "@/lib/types";
+import FollowButton from "@/components/FollowButton";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -74,9 +75,12 @@ export default async function SharePage({
       <header className="border-b border-gray-800 px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <span className="font-bold text-lg text-blue-400">CoinHQ</span>
-          <span className="text-xs text-gray-500 bg-gray-800 px-3 py-1 rounded-full">
-            Read-only portfolio view
-          </span>
+          <div className="flex items-center gap-3">
+            {data.allow_follow && <FollowButton token={token} />}
+            <span className="text-xs text-gray-500 bg-gray-800 px-3 py-1 rounded-full hidden sm:inline">
+              Read-only view
+            </span>
+          </div>
         </div>
       </header>
 

@@ -11,6 +11,7 @@ class ShareLinkCreate(BaseModel):
     show_allocation_pct: bool = True
     expires_at: datetime | None = None
     label: str | None = None
+    allow_follow: bool = True
 
 
 class ShareLinkResponse(BaseModel):
@@ -25,6 +26,7 @@ class ShareLinkResponse(BaseModel):
     is_active: bool
     label: str | None
     created_at: datetime
+    allow_follow: bool = True
 
     @computed_field
     @property
@@ -49,10 +51,21 @@ class SharedExchange(BaseModel):
     total_usd: float | None = None
 
 
+class FollowedPortfolioResponse(BaseModel):
+    id: int
+    token: str
+    label: str | None
+    followed_at: datetime
+    model_config = {"from_attributes": True}
+
+
 class SharedPortfolioView(BaseModel):
-    total_usd: float | None = None    # None when show_total_value=False
+    token: str = ""
+    profile_name: str = ""
+    total_usd: float | None = None
     exchanges: list[SharedExchange]
     show_total_value: bool
     show_coin_amounts: bool
     show_exchange_names: bool
     show_allocation_pct: bool
+    allow_follow: bool = True

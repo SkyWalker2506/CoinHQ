@@ -10,10 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.exchange_key import ExchangeKey
+from app.models.followed_portfolio import FollowedPortfolio
 from app.models.profile import Profile
 from app.models.share_link import ShareLink
 from app.models.user import User
 from app.schemas.share_link import (
+    FollowedPortfolioResponse,
     SharedAsset,
     SharedExchange,
     SharedPortfolioView,
@@ -47,6 +49,7 @@ async def create_share_link(
         show_allocation_pct=payload.show_allocation_pct,
         expires_at=payload.expires_at,
         label=payload.label,
+        allow_follow=payload.allow_follow,
     )
     db.add(link)
     await db.commit()
@@ -80,7 +83,6 @@ async def revoke_share_link(
     if not link:
         raise HTTPException(status_code=404, detail="Share link not found")
 
-    # Ownership check via profile
     profile = await db.get(Profile, link.profile_id)
     if not profile or profile.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Share link not found")
@@ -89,10 +91,75 @@ async def revoke_share_link(
     await db.commit()
 
 
+# ── Follow endpoints ─────────────────────────────────────────────────────────
+
+@router.post("/followed/{token}", response_model=FollowedPortfolioResponse, status_code=status.HTTP_201_CREATED)
+async def follow_portfolio(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add a shared portfolio to the current user's followed list."""
+    result = await db.execute(
+        select(ShareLink).where(ShareLink.token == token, ShareLink.is_active == True)  # noqa: E712
+    )
+    link = result.scalar_one_or_none()
+    if not link:
+        raise HTTPException(status_code=404, detail="Share link not found or revoked")
+    if not link.allow_follow:
+        raise HTTPException(status_code=403, detail="This portfolio does not allow following")
+
+    # Idempotent — return existing if already followed
+    existing = await db.execute(
+        select(FollowedPortfolio).where(
+            FollowedPortfolio.user_id == current_user.id,
+            FollowedPortfolio.token == token,
+        )
+    )
+    followed = existing.scalar_one_or_none()
+    if followed:
+        return followed
+
+    followed = FollowedPortfolio(
+        user_id=current_user.id,
+        token=token,
+        label=link.label,
+    )
+    db.add(followed)
+    await db.commit()
+    await db.refresh(followed)
+    return followed
+
+
+@router.get("/followed", response_model=list[FollowedPortfolioResponse])
+async def list_followed(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(FollowedPortfolio)
+        .where(FollowedPortfolio.user_id == current_user.id)
+        .order_by(FollowedPortfolio.followed_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.delete("/followed/{followed_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unfollow_portfolio(
+    followed_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    followed = await db.get(FollowedPortfolio, followed_id)
+    if not followed or followed.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Not found")
+    await db.delete(followed)
+    await db.commit()
+
+
 # ── Public endpoint (no auth, rate-limited) ─────────────────────────────────
 
 def _mask_exchange(name: str) -> str:
-    """Return a stable but irreversible alias for an exchange name."""
     digest = hashlib.sha256(name.encode()).hexdigest()[:8]
     return f"Exchange {digest}"
 
@@ -112,7 +179,6 @@ async def public_share_view(
     if not link:
         raise HTTPException(status_code=404, detail="Link not found or has been revoked")
 
-    # Track view
     link.view_count += 1
     link.last_viewed_at = datetime.now(UTC)
     await db.commit()
@@ -125,7 +191,6 @@ async def public_share_view(
         if now > exp:
             raise HTTPException(status_code=410, detail="This link has expired")
 
-    # Fetch portfolio data
     keys_result = await db.execute(
         select(ExchangeKey).where(ExchangeKey.profile_id == link.profile_id)
     )
@@ -134,13 +199,10 @@ async def public_share_view(
     profile = await db.get(Profile, link.profile_id)
     portfolio = await get_portfolio(link.profile_id, profile.name if profile else "", keys)
 
-    # Build filtered view
     grand_total = portfolio.total_usd
-
     filtered_exchanges: list[SharedExchange] = []
     for ex in portfolio.exchanges:
         exchange_label = ex.exchange if link.show_exchange_names else _mask_exchange(ex.exchange)
-
         assets: list[SharedAsset] = []
         for bal in ex.balances:
             if bal.total == 0:
@@ -148,14 +210,12 @@ async def public_share_view(
             alloc_pct: float | None = None
             if link.show_allocation_pct and grand_total and grand_total > 0:
                 alloc_pct = round((bal.usd_value or 0) / grand_total * 100, 2)
-
             assets.append(SharedAsset(
                 asset=bal.asset,
                 amount=bal.total if link.show_coin_amounts else None,
                 usd_value=bal.usd_value,
                 allocation_pct=alloc_pct,
             ))
-
         filtered_exchanges.append(SharedExchange(
             exchange_name=exchange_label,
             assets=assets,
@@ -163,10 +223,13 @@ async def public_share_view(
         ))
 
     return SharedPortfolioView(
+        token=token,
+        profile_name=profile.name if profile else "",
         total_usd=portfolio.total_usd if link.show_total_value else None,
         exchanges=filtered_exchanges,
         show_total_value=link.show_total_value,
         show_coin_amounts=link.show_coin_amounts,
         show_exchange_names=link.show_exchange_names,
         show_allocation_pct=link.show_allocation_pct,
+        allow_follow=link.allow_follow,
     )

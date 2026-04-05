@@ -61,6 +61,7 @@ export interface ShareLink {
   label: string | null;
   created_at: string;
   share_url: string;
+  allow_follow: boolean;
 }
 
 export interface ShareLinkCreate {
@@ -71,6 +72,7 @@ export interface ShareLinkCreate {
   show_allocation_pct: boolean;
   expires_at: string | null;
   label: string | null;
+  allow_follow?: boolean;
 }
 
 export interface SharedAsset {

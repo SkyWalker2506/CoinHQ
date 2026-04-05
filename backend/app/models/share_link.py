@@ -26,6 +26,7 @@ class ShareLink(Base):
     last_viewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    allow_follow: Mapped[bool] = mapped_column(Boolean, default=True)
 
     profile = relationship("Profile")
 
