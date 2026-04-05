@@ -5,6 +5,7 @@ import { getProfiles, deleteProfile, getKeys, deleteKey } from "@/lib/api";
 import type { Profile, ExchangeKey } from "@/lib/types";
 import AddProfileModal from "@/components/AddProfileModal";
 import AddKeyModal from "@/components/AddKeyModal";
+import ShareLinkManager from "@/components/ShareLinkManager";
 import Link from "next/link";
 
 export default function SettingsPage() {
@@ -118,6 +119,11 @@ export default function SettingsPage() {
             </button>
           </div>
         ))}
+      </div>
+
+      {/* Share Links */}
+      <div className="mt-8">
+        <ShareLinkManager profiles={profiles} />
       </div>
 
       {/* Modals */}

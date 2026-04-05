@@ -3,6 +3,9 @@ import type {
   ExchangeKey,
   PortfolioResponse,
   AggregatePortfolioResponse,
+  ShareLink,
+  ShareLinkCreate,
+  SharedPortfolioView,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -57,3 +60,21 @@ export const getPortfolio = (profileId: number) =>
 
 export const getAggregatePortfolio = () =>
   request<AggregatePortfolioResponse>("/api/v1/portfolio/aggregate");
+
+// Share Links
+export const getShareLinks = (profileId?: number) => {
+  const q = profileId != null ? `?profile_id=${profileId}` : "";
+  return request<ShareLink[]>(`/api/v1/share${q}`);
+};
+
+export const createShareLink = (payload: ShareLinkCreate) =>
+  request<ShareLink>("/api/v1/share", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const revokeShareLink = (id: number) =>
+  fetch(`${BASE_URL}/api/v1/share/${id}`, { method: "DELETE" });
+
+export const getPublicShare = (token: string) =>
+  request<SharedPortfolioView>(`/api/v1/public/share/${token}`);
