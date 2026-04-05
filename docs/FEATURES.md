@@ -100,6 +100,7 @@ Profil sahibi yöneticiye şunları ayrı ayrı açıp kapayabilir:
 - Gelişmiş grafikler
 - AI insight katmanı (trend analizi, risk uyarıları)
 - Bildirim kanalları (opsiyonel, kullanıcı aktif eder):
-  - Telegram bot — kendi botunu bağlayabilir, varsayılan kapalı
+  - Telegram — sadece bildirim amaçlı (al/sat emri değil): işlem gerçekleşti, limit aşıldı, portföy değişimi gibi alertler
+  - Kullanıcı kendi bot token'ını girer, CoinHQ mesaj atar
   - Email
 
