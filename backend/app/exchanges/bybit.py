@@ -1,11 +1,11 @@
 import hashlib
 import hmac
 import time
-import json
-from typing import List
+from contextlib import asynccontextmanager
 
 import httpx
 
+from app.core.logging import logger
 from app.exchanges.base import ExchangeAdapter
 from app.schemas.portfolio import Balance
 
@@ -26,12 +26,20 @@ class BybitAdapter(ExchangeAdapter):
             "X-BAPI-RECV-WINDOW": "5000",
         }
 
-    async def get_balances(self) -> List[Balance]:
+    @asynccontextmanager
+    async def _client(self):
+        if self._http_client is not None:
+            yield self._http_client
+        else:
+            async with httpx.AsyncClient(timeout=10) as client:
+                yield client
+
+    async def get_balances(self) -> list[Balance]:
         timestamp = str(int(time.time() * 1000))
         params_str = "accountType=UNIFIED"
         sign = self._sign(timestamp, params_str)
 
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with self._client() as client:
             resp = await client.get(
                 f"{BYBIT_BASE}/v5/account/wallet-balance",
                 params={"accountType": "UNIFIED"},
@@ -58,16 +66,21 @@ class BybitAdapter(ExchangeAdapter):
         return balances
 
     async def validate_key(self) -> bool:
-        try:
-            timestamp = str(int(time.time() * 1000))
-            params_str = "accountType=UNIFIED"
-            sign = self._sign(timestamp, params_str)
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{BYBIT_BASE}/v5/account/wallet-balance",
-                    params={"accountType": "UNIFIED"},
-                    headers=self._headers(timestamp, sign),
-                )
-            return resp.status_code == 200
-        except Exception:
-            return False
+        timestamp = str(int(time.time() * 1000))
+        params_str = ""
+        sign = self._sign(timestamp, params_str)
+        async with self._client() as client:
+            resp = await client.get(
+                f"{BYBIT_BASE}/v5/user/query-api",
+                headers=self._headers(timestamp, sign),
+            )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Reject keys that are not read-only (readOnly: 0 means write access enabled)
+        result = data.get("result", {})
+        if str(result.get("readOnly", "1")) == "0":
+            logger.error("exchange_write_permissions_rejected", exchange="bybit", key=self._mask_key())
+            raise ValueError("Write permissions detected. Only read-only API keys are accepted.")
+
+        return True

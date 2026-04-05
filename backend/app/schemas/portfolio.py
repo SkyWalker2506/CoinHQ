@@ -1,5 +1,5 @@
+
 from pydantic import BaseModel
-from typing import List, Optional, Dict
 
 
 class Balance(BaseModel):
@@ -7,19 +7,19 @@ class Balance(BaseModel):
     free: float
     locked: float
     total: float
-    usd_value: Optional[float] = None
+    usd_value: float | None = None
 
 
 class ExchangeBalance(BaseModel):
     exchange: str
-    balances: List[Balance]
+    balances: list[Balance]
     total_usd: float
 
 
 class PortfolioResponse(BaseModel):
     profile_id: int
     profile_name: str
-    exchanges: List[ExchangeBalance]
+    exchanges: list[ExchangeBalance]
     total_usd: float
     cached: bool = False
 
@@ -28,10 +28,10 @@ class ProfilePortfolio(BaseModel):
     profile_id: int
     profile_name: str
     total_usd: float
-    exchanges: List[ExchangeBalance]
+    exchanges: list[ExchangeBalance]
 
 
 class AggregatePortfolioResponse(BaseModel):
-    profiles: List[ProfilePortfolio]
+    profiles: list[ProfilePortfolio]
     grand_total_usd: float
-    asset_totals: Dict[str, float]  # asset -> total USD across all profiles
+    asset_totals: dict[str, float]  # asset -> total USD across all profiles

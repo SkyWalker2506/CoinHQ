@@ -36,12 +36,18 @@ uv run ruff check . → uv run pytest → pnpm lint → pnpm test
 
 ## 4. Mimari notlar
 
-- Multi-profile: her profil bir kisi/hesap seti — login yok, profil secici var
-- Exchange adapter pattern: `backend/app/exchanges/` — yeni exchange eklemek icin sadece base.py implemente et
+Detaylar icin: **`README.md`**
+
+- Auth: Google OAuth 2.0 → JWT; her endpoint `get_current_user` dependency kullanir
+- Multi-user: her kullanici sadece kendi profillerini gorebilir (`profile.user_id == current_user.id`)
+- Exchange adapter pattern: `backend/app/exchanges/` — yeni exchange icin sadece `base.py` implemente et
 - Fiyat verisi: CoinGecko free API, Redis'te 60s cache
 - Rate limiting: slowapi ile `/portfolio` endpoint'lerde
+- Share link: `show_*` flag'leri ile filtrelenmiş public view, auth gerektirmez
 
 ## 5. Notlar
 
-- Phase 1 odak: dashboard + profil + API key yonetimi
+- Phase 1 odak: Google auth + dashboard + profil + API key yonetimi + share link
 - Trade/write izni Phase 2'ye kadar implemente edilmez
+- `JWT_SECRET` ve `ENCRYPTION_KEY` eksikse uygulama baslamaz
+- Google OAuth redirect URI: `{BACKEND_URL}/api/v1/auth/google/callback`

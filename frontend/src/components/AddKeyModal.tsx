@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { addKey } from "@/lib/api";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { SupportedExchange } from "@/lib/types";
+import { events } from "@/lib/analytics";
 
-const EXCHANGES: SupportedExchange[] = ["binance", "bybit", "okx"];
+const EXCHANGES: SupportedExchange[] = ["binance", "bybit", "okx", "coinbase", "kraken"];
 
 interface Props {
   profileId: number;
@@ -18,6 +20,15 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
   const [apiSecret, setApiSecret] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const trapRef = useFocusTrap(true);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
+  }, [onClose])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +37,7 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
     setError(null);
     try {
       await addKey(profileId, exchange, apiKey.trim(), apiSecret.trim());
+      events.exchangeConnected(exchange);
       onAdded();
       onClose();
     } catch (err: any) {
@@ -37,15 +49,22 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md">
-        <h2 className="text-lg font-semibold text-white mb-4">Add Exchange API Key</h2>
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-key-modal-title"
+        className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md"
+      >
+        <h2 id="add-key-modal-title" className="text-lg font-semibold text-white mb-4">Add Exchange API Key</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Exchange</label>
+            <label htmlFor="exchange-select" className="block text-sm text-gray-400 mb-1">Exchange</label>
             <select
+              id="exchange-select"
               value={exchange}
               onChange={(e) => setExchange(e.target.value as SupportedExchange)}
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
             >
               {EXCHANGES.map((ex) => (
                 <option key={ex} value={ex}>
@@ -55,17 +74,18 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
             </select>
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">API Key</label>
+            <label htmlFor="api-key" className="block text-sm text-gray-400 mb-1">API Key</label>
             <input
+              id="api-key"
               type="text"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="Paste your read-only API key"
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm font-mono focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label htmlFor="api-secret" className="block text-sm text-gray-400 mb-1">
               API Secret
               {exchange === "okx" && (
                 <span className="ml-2 text-xs text-yellow-400">
@@ -74,17 +94,18 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
               )}
             </label>
             <input
+              id="api-secret"
               type="password"
               value={apiSecret}
               onChange={(e) => setApiSecret(e.target.value)}
               placeholder="Paste your API secret"
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm font-mono focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
             />
           </div>
           <p className="text-xs text-gray-500">
             Keys are encrypted with AES-256 before storage. Only read-only keys are accepted.
           </p>
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && <p role="alert" className="text-red-400 text-sm">{error}</p>}
           <div className="flex justify-end gap-3">
             <button
               type="button"

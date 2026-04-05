@@ -20,10 +20,15 @@ export default function AllocationChart({ exchanges }: Props) {
     }
   }
 
+  const total = Object.values(assetMap).reduce((acc, v) => acc + v, 0);
   const data = Object.entries(assetMap)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
-    .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }));
+    .map(([name, value]) => ({
+      name,
+      value: parseFloat(value.toFixed(2)),
+      percentage: total > 0 ? parseFloat(((value / total) * 100).toFixed(1)) : 0,
+    }));
 
   if (data.length === 0) {
     return (
@@ -36,22 +41,43 @@ export default function AllocationChart({ exchanges }: Props) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
       <h3 className="text-sm font-medium text-gray-400 mb-4">Asset Allocation</h3>
-      <ResponsiveContainer width="100%" height={240}>
-        <PieChart>
-          <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
-            {data.map((_, index) => (
-              <Cell key={index} fill={COLORS[index % COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip
-            formatter={(value: number) =>
-              new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
-            }
-            contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
-          />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
+      <div role="img" aria-label="Asset allocation pie chart">
+        <ResponsiveContainer width="100%" height={240}>
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+              {data.map((_, index) => (
+                <Cell key={index} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(value: number) =>
+                new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
+              }
+              contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
+            />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <table className="sr-only">
+        <caption>Asset allocation data</caption>
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Value (USD)</th>
+            <th>Percentage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((item) => (
+            <tr key={item.name}>
+              <td>{item.name}</td>
+              <td>${item.value.toLocaleString()}</td>
+              <td>{item.percentage}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

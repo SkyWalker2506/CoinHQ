@@ -1,6 +1,6 @@
-from pydantic import BaseModel
 from datetime import datetime
-from typing import List
+
+from pydantic import BaseModel
 
 
 class ProfileCreate(BaseModel):
@@ -17,4 +17,4 @@ class ProfileRead(BaseModel):
 
 
 class ProfileList(BaseModel):
-    profiles: List[ProfileRead]
+    profiles: list[ProfileRead]

@@ -1,18 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getProfiles, deleteProfile, getKeys, deleteKey } from "@/lib/api";
 import type { Profile, ExchangeKey } from "@/lib/types";
 import AddProfileModal from "@/components/AddProfileModal";
 import AddKeyModal from "@/components/AddKeyModal";
 import ShareLinkManager from "@/components/ShareLinkManager";
 import Link from "next/link";
+import { Navigation } from "@/components/Navigation";
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [keys, setKeys] = useState<Record<number, ExchangeKey[]>>({});
   const [showAddProfile, setShowAddProfile] = useState(false);
   const [addKeyForProfile, setAddKeyForProfile] = useState<number | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (!token) router.replace('/login')
+  }, [router])
 
   const loadProfiles = async () => {
     const p = await getProfiles();
@@ -44,13 +52,12 @@ export default function SettingsPage() {
   };
 
   return (
+    <>
+      <Navigation />
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white">
-            ← Dashboard
-          </Link>
           <h1 className="text-2xl font-bold text-white mt-1">Settings</h1>
         </div>
         <button
@@ -77,6 +84,7 @@ export default function SettingsPage() {
               <h2 className="text-lg font-semibold text-white">{profile.name}</h2>
               <button
                 onClick={() => handleDeleteProfile(profile.id)}
+                aria-label={`Delete profile ${profile.name}`}
                 className="text-xs text-red-400 hover:text-red-300"
               >
                 Delete profile
@@ -103,6 +111,7 @@ export default function SettingsPage() {
                   </div>
                   <button
                     onClick={() => handleDeleteKey(profile.id, key.id)}
+                    aria-label={`Remove ${key.exchange} API key`}
                     className="text-xs text-red-400 hover:text-red-300"
                   >
                     Remove
@@ -141,5 +150,6 @@ export default function SettingsPage() {
         />
       )}
     </div>
+    </>
   );
 }

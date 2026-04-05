@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getShareLinks, revokeShareLink } from "@/lib/api";
 import type { Profile, ShareLink } from "@/lib/types";
 import CreateShareLinkModal from "./CreateShareLinkModal";
+import { events } from "@/lib/analytics";
 
 interface Props {
   profiles: Profile[];
@@ -42,6 +43,7 @@ export default function ShareLinkManager({ profiles }: Props) {
   const copyUrl = (token: string) => {
     const url = `${BASE_URL}/share/${token}`;
     navigator.clipboard.writeText(url).then(() => {
+      events.shareLinkCopied();
       setCopied(token);
       setTimeout(() => setCopied(null), 2000);
     });
@@ -146,12 +148,14 @@ export default function ShareLinkManager({ profiles }: Props) {
               <div className="flex items-center gap-2 ml-3 shrink-0">
                 <button
                   onClick={() => copyUrl(link.token)}
+                  aria-label={`Copy URL for ${link.label || 'share link'}`}
                   className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-xs text-white rounded-lg transition-colors"
                 >
                   {copied === link.token ? "Copied!" : "Copy URL"}
                 </button>
                 <button
                   onClick={() => handleRevoke(link.id)}
+                  aria-label={`Revoke share link ${link.label || ''}`}
                   className="text-xs text-red-400 hover:text-red-300 px-2"
                 >
                   Revoke

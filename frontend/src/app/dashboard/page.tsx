@@ -1,24 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getProfiles, getPortfolio, getAggregatePortfolio } from "@/lib/api";
-import type { Profile, PortfolioResponse, AggregatePortfolioResponse } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import { getPortfolio, getAggregatePortfolio } from "@/lib/api";
+import type { PortfolioResponse, AggregatePortfolioResponse } from "@/lib/types";
+import { useProfiles } from "@/hooks/usePortfolio";
 import ProfileSwitcher from "@/components/ProfileSwitcher";
 import PortfolioSummary from "@/components/PortfolioSummary";
-import AllocationChart from "@/components/AllocationChart";
+import dynamic from "next/dynamic";
 import ExchangeList from "@/components/ExchangeList";
 import Link from "next/link";
+import { PortfolioSkeleton } from "@/components/SkeletonCard";
+import { Navigation } from "@/components/Navigation";
+import { OnboardingWizard } from "@/components/OnboardingWizard";
+
+const AllocationChart = dynamic(() => import("@/components/AllocationChart"), { ssr: false });
 
 export default function DashboardPage() {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const router = useRouter();
+  const { profiles = [] } = useProfiles();
   const [selectedProfileId, setSelectedProfileId] = useState<number | "aggregate">("aggregate");
   const [portfolio, setPortfolio] = useState<PortfolioResponse | AggregatePortfolioResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
-    getProfiles().then(setProfiles).catch(console.error);
-  }, []);
+    const token = localStorage.getItem('token')
+    if (!token) router.replace('/login')
+  }, [router])
+
+  useEffect(() => {
+    const done = localStorage.getItem('onboarding_done')
+    if (!done) setShowOnboarding(true)
+  }, [])
 
   useEffect(() => {
     setLoading(true);
@@ -44,17 +59,10 @@ export default function DashboardPage() {
     : (portfolio as PortfolioResponse)?.exchanges ?? [];
 
   return (
+    <>
+      {showOnboarding && <OnboardingWizard onComplete={() => setShowOnboarding(false)} />}
+      <Navigation />
     <div className="max-w-6xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold text-white">CoinHQ</h1>
-        <Link
-          href="/settings"
-          className="text-sm text-gray-400 hover:text-white transition-colors"
-        >
-          Settings
-        </Link>
-      </div>
 
       {/* Profile Switcher */}
       <ProfileSwitcher
@@ -65,20 +73,29 @@ export default function DashboardPage() {
 
       {/* Error */}
       {error && (
-        <div className="mt-4 p-4 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
+        <div role="alert" className="mt-4 p-4 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
           {error}
         </div>
       )}
 
       {/* Loading */}
       {loading && (
-        <div className="mt-8 text-center text-gray-400">Loading portfolio...</div>
+        <div role="status" aria-live="polite" aria-label="Portfolio yükleniyor" className="mt-8">
+          <PortfolioSkeleton />
+        </div>
       )}
 
       {/* Portfolio Content */}
       {!loading && portfolio && (
         <div className="mt-6 space-y-6">
-          <PortfolioSummary totalUsd={totalUsd} />
+          <PortfolioSummary
+            totalUsd={totalUsd}
+            cached={
+              isAggregate
+                ? undefined
+                : (portfolio as PortfolioResponse)?.cached
+            }
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <AllocationChart exchanges={exchanges} />
@@ -101,5 +118,6 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

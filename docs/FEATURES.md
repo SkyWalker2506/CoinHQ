@@ -6,11 +6,15 @@ Bu dosya ürün gereksinimlerini içerir. Implementasyon detayları için `READM
 
 ## Phase 1 — Temel (MVP)
 
+### Kimlik Doğrulama
+- Google hesabıyla giriş (OAuth 2.0) — şifre yok
+- Her kullanıcı yalnızca kendi profillerini görür ve yönetir
+- JWT token ile oturum (7 gün geçerli)
+
 ### Multi-Profil Portföy Takibi
-- Birden fazla kişinin portföyü aynı uygulamada tutulur
-- Her profil bir kişiyi veya hesap setini temsil eder (login yok, profil seçici var)
-- Tüm profiller aynı anda görüntülenebilir veya tek tek geçiş yapılabilir
-- Profil sahibi ve o profili yöneten/danışmanlık yapan kişi farklı olabilir
+- Her kullanıcı birden fazla profil oluşturabilir (ör. "Binance Main", "OKX Trading")
+- Her profil bir hesap setini temsil eder — profiller arası geçiş yapılabilir
+- Tüm profiller birleşik (aggregate) görünümde izlenebilir
 
 ### Exchange Bağlantısı
 - Desteklenen borsalar: Binance, Bybit, OKX (Phase 1)

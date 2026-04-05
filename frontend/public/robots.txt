@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /share/
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /api/
+
+Sitemap: https://yourdomain.com/sitemap.xml

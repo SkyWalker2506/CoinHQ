@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createShareLink } from "@/lib/api";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { ShareLink } from "@/lib/types";
 
 interface Props {
@@ -26,6 +27,15 @@ export default function CreateShareLinkModal({ profileId, onClose, onCreated }: 
   const [label, setLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const trapRef = useFocusTrap(true);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
+  }, [onClose])
 
   const handleCreate = async () => {
     setLoading(true);
@@ -56,8 +66,14 @@ export default function CreateShareLinkModal({ profileId, onClose, onCreated }: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-xl">
-        <h2 className="text-lg font-semibold text-white mb-5">Create Share Link</h2>
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-share-link-modal-title"
+        className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-xl"
+      >
+        <h2 id="create-share-link-modal-title" className="text-lg font-semibold text-white mb-5">Create Share Link</h2>
 
         {/* Permissions */}
         <div className="space-y-3 mb-5">
@@ -104,20 +120,21 @@ export default function CreateShareLinkModal({ profileId, onClose, onCreated }: 
 
         {/* Label */}
         <div className="mb-6">
-          <label className="text-xs font-medium text-gray-400 uppercase tracking-wider block mb-1">
+          <label htmlFor="share-link-label" className="text-xs font-medium text-gray-400 uppercase tracking-wider block mb-1">
             Label (optional)
           </label>
           <input
+            id="share-link-label"
             type="text"
             placeholder="e.g. For accountant"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             maxLength={100}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
           />
         </div>
 
-        {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
+        {error && <p role="alert" className="text-sm text-red-400 mb-4">{error}</p>}
 
         <div className="flex justify-end gap-3">
           <button

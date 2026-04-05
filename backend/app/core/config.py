@@ -1,5 +1,5 @@
+
 from pydantic_settings import BaseSettings
-from typing import List
 
 
 class Settings(BaseSettings):
@@ -16,8 +16,17 @@ class Settings(BaseSettings):
     # Security
     ENCRYPTION_KEY: str  # Fernet key — required
 
+    # JWT
+    JWT_SECRET: str  # required
+    JWT_EXPIRE_MINUTES: int = 10080  # 7 days
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    FRONTEND_URL: str = "http://localhost:3000"
+
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
     # Rate limiting
     RATE_LIMIT_PORTFOLIO: str = "10/minute"

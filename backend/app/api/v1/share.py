@@ -1,23 +1,24 @@
 import hashlib
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.share_link import ShareLink
+from app.core.security import get_current_user
 from app.models.exchange_key import ExchangeKey
 from app.models.profile import Profile
+from app.models.share_link import ShareLink
+from app.models.user import User
 from app.schemas.share_link import (
+    SharedAsset,
+    SharedExchange,
+    SharedPortfolioView,
     ShareLinkCreate,
     ShareLinkResponse,
-    SharedPortfolioView,
-    SharedExchange,
-    SharedAsset,
 )
 from app.services.portfolio_service import get_portfolio
 
@@ -31,9 +32,10 @@ router = APIRouter(tags=["share"])
 async def create_share_link(
     payload: ShareLinkCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     profile = await db.get(Profile, payload.profile_id)
-    if not profile:
+    if not profile or profile.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Profile not found")
 
     link = ShareLink(
@@ -52,12 +54,16 @@ async def create_share_link(
     return link
 
 
-@router.get("/share", response_model=List[ShareLinkResponse])
+@router.get("/share", response_model=list[ShareLinkResponse])
 async def list_share_links(
-    profile_id: Optional[int] = None,
+    profile_id: int | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = select(ShareLink).where(ShareLink.is_active == True)  # noqa: E712
+    query = select(ShareLink).join(Profile).where(
+        ShareLink.is_active == True,  # noqa: E712
+        Profile.user_id == current_user.id,
+    )
     if profile_id is not None:
         query = query.where(ShareLink.profile_id == profile_id)
     result = await db.execute(query.order_by(ShareLink.created_at.desc()))
@@ -68,10 +74,17 @@ async def list_share_links(
 async def revoke_share_link(
     link_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     link = await db.get(ShareLink, link_id)
     if not link:
         raise HTTPException(status_code=404, detail="Share link not found")
+
+    # Ownership check via profile
+    profile = await db.get(Profile, link.profile_id)
+    if not profile or profile.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Share link not found")
+
     link.is_active = False
     await db.commit()
 
@@ -99,11 +112,16 @@ async def public_share_view(
     if not link:
         raise HTTPException(status_code=404, detail="Link not found or has been revoked")
 
+    # Track view
+    link.view_count += 1
+    link.last_viewed_at = datetime.now(UTC)
+    await db.commit()
+
     if link.expires_at is not None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         exp = link.expires_at
         if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
+            exp = exp.replace(tzinfo=UTC)
         if now > exp:
             raise HTTPException(status_code=410, detail="This link has expired")
 
@@ -119,15 +137,15 @@ async def public_share_view(
     # Build filtered view
     grand_total = portfolio.total_usd
 
-    filtered_exchanges: List[SharedExchange] = []
+    filtered_exchanges: list[SharedExchange] = []
     for ex in portfolio.exchanges:
         exchange_label = ex.exchange if link.show_exchange_names else _mask_exchange(ex.exchange)
 
-        assets: List[SharedAsset] = []
+        assets: list[SharedAsset] = []
         for bal in ex.balances:
             if bal.total == 0:
                 continue
-            alloc_pct: Optional[float] = None
+            alloc_pct: float | None = None
             if link.show_allocation_pct and grand_total and grand_total > 0:
                 alloc_pct = round((bal.usd_value or 0) / grand_total * 100, 2)
 

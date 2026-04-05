@@ -1,11 +1,12 @@
 import hashlib
 import hmac
 import time
-from typing import List
+from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
 import httpx
 
+from app.core.logging import logger
 from app.exchanges.base import ExchangeAdapter
 from app.schemas.portfolio import Balance
 
@@ -24,10 +25,18 @@ class BinanceAdapter(ExchangeAdapter):
     def _headers(self) -> dict:
         return {"X-MBX-APIKEY": self.api_key}
 
-    async def get_balances(self) -> List[Balance]:
+    @asynccontextmanager
+    async def _client(self):
+        if self._http_client is not None:
+            yield self._http_client
+        else:
+            async with httpx.AsyncClient(timeout=10) as client:
+                yield client
+
+    async def get_balances(self) -> list[Balance]:
         params = self._sign({"timestamp": int(time.time() * 1000)})
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = client.get(
+        async with self._client() as client:
+            resp = await client.get(
                 f"{BINANCE_BASE}/api/v3/account",
                 params=params,
                 headers=self._headers(),
@@ -52,14 +61,19 @@ class BinanceAdapter(ExchangeAdapter):
         return balances
 
     async def validate_key(self) -> bool:
-        try:
-            params = self._sign({"timestamp": int(time.time() * 1000)})
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{BINANCE_BASE}/api/v3/account",
-                    params=params,
-                    headers=self._headers(),
-                )
-            return resp.status_code == 200
-        except Exception:
-            return False
+        params = self._sign({"timestamp": int(time.time() * 1000)})
+        async with self._client() as client:
+            resp = await client.get(
+                f"{BINANCE_BASE}/api/v3/account",
+                params=params,
+                headers=self._headers(),
+            )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Reject keys that have trading permissions — read-only keys must not be able to trade
+        if data.get("canTrade") or data.get("enableSpotAndMarginTrading"):
+            logger.error("exchange_write_permissions_rejected", exchange="binance", key=self._mask_key())
+            raise ValueError("Write permissions detected. Only read-only API keys are accepted.")
+
+        return True
