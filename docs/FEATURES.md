@@ -98,5 +98,8 @@ Profil sahibi yöneticiye şunları ayrı ayrı açıp kapayabilir:
 - PnL hesaplama (realized / unrealized)
 - Trade history görüntüleme
 - Gelişmiş grafikler
-- Email / Telegram uyarıları
 - AI insight katmanı (trend analizi, risk uyarıları)
+- Bildirim kanalları (opsiyonel, kullanıcı aktif eder):
+  - Telegram bot — kendi botunu bağlayabilir, varsayılan kapalı
+  - Email
+
