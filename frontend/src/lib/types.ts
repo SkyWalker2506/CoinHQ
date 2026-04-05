@@ -89,10 +89,13 @@ export interface SharedExchange {
 }
 
 export interface SharedPortfolioView {
+  token: string;
+  profile_name: string;
   total_usd: number | null;
   exchanges: SharedExchange[];
   show_total_value: boolean;
   show_coin_amounts: boolean;
   show_exchange_names: boolean;
   show_allocation_pct: boolean;
+  allow_follow: boolean;
 }
