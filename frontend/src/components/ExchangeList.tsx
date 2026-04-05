@@ -113,8 +113,18 @@ function ExchangeItem({
   );
 }
 
+const EXCHANGE_LABELS: Record<string, string> = {
+  binance: "BNC",
+  binancetr: "BNCTR",
+  bybit: "BBT",
+  okx: "OKX",
+  coinbase: "CB",
+  kraken: "KRK",
+};
+
 export default function ExchangeList({ exchanges, onAddKey }: Props) {
   const [search, setSearch] = useState("");
+  const [activeExchange, setActiveExchange] = useState<string | null>(null);
 
   if (exchanges.length === 0) {
     return (
@@ -130,6 +140,9 @@ export default function ExchangeList({ exchanges, onAddKey }: Props) {
   }
 
   const total = exchanges.reduce((acc, e) => acc + e.total_usd, 0);
+  const filtered = activeExchange
+    ? exchanges.filter((e) => e.exchange === activeExchange)
+    : exchanges;
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
@@ -138,6 +151,31 @@ export default function ExchangeList({ exchanges, onAddKey }: Props) {
           Exchange Balances
         </h3>
       </div>
+
+      {/* Exchange filter tabs */}
+      {exchanges.length > 1 && (
+        <div className="flex gap-1.5 mb-3 flex-wrap">
+          <button
+            onClick={() => setActiveExchange(null)}
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+              activeExchange === null ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+            }`}
+          >
+            ALL
+          </button>
+          {exchanges.map((e) => (
+            <button
+              key={e.exchange}
+              onClick={() => setActiveExchange(activeExchange === e.exchange ? null : e.exchange)}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+                activeExchange === e.exchange ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+              }`}
+            >
+              {EXCHANGE_LABELS[e.exchange] ?? e.exchange.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-4">
@@ -165,7 +203,7 @@ export default function ExchangeList({ exchanges, onAddKey }: Props) {
       </div>
 
       <div className="space-y-3">
-        {exchanges.map((exchange, idx) => (
+        {filtered.map((exchange, idx) => (
           <ExchangeItem key={idx} exchange={exchange} total={total} search={search} />
         ))}
       </div>

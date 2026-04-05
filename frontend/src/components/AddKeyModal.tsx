@@ -6,7 +6,14 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { SupportedExchange } from "@/lib/types";
 import { events } from "@/lib/analytics";
 
-const EXCHANGES: SupportedExchange[] = ["binance", "bybit", "okx", "coinbase", "kraken"];
+const EXCHANGES: { id: SupportedExchange; label: string }[] = [
+  { id: "binance", label: "Binance" },
+  { id: "binancetr", label: "Binance TR" },
+  { id: "bybit", label: "Bybit" },
+  { id: "okx", label: "OKX" },
+  { id: "coinbase", label: "Coinbase" },
+  { id: "kraken", label: "Kraken" },
+];
 
 interface ExchangeInfo {
   webUrl: string;
@@ -21,6 +28,12 @@ const EXCHANGE_INFO: Record<SupportedExchange, ExchangeInfo> = {
     appScheme: "binance://",
     iosUrl: "https://apps.apple.com/app/binance-buy-bitcoin-crypto/id1436799971",
     androidUrl: "https://play.google.com/store/apps/details?id=com.binance.dev",
+  },
+  binancetr: {
+    webUrl: "https://www.trbinance.com/account/api-management",
+    appScheme: null,
+    iosUrl: "https://apps.apple.com/tr/app/binance-tr/id1560111779",
+    androidUrl: "https://play.google.com/store/apps/details?id=com.trbinance.app",
   },
   bybit: {
     webUrl: "https://www.bybit.com/app/user/api-management",
@@ -136,9 +149,7 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
               className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
             >
               {EXCHANGES.map((ex) => (
-                <option key={ex} value={ex}>
-                  {ex.charAt(0).toUpperCase() + ex.slice(1)}
-                </option>
+                <option key={ex.id} value={ex.id}>{ex.label}</option>
               ))}
             </select>
           </div>

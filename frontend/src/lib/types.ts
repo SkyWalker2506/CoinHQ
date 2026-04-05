@@ -46,7 +46,7 @@ export interface AggregatePortfolioResponse {
   asset_totals: Record<string, number>;
 }
 
-export type SupportedExchange = "binance" | "bybit" | "okx" | "coinbase" | "kraken";
+export type SupportedExchange = "binance" | "bybit" | "okx" | "coinbase" | "kraken" | "binancetr";
 
 export interface ShareLink {
   id: number;

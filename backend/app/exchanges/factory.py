@@ -26,8 +26,11 @@ def get_adapter(
     elif exchange == "kraken":
         from app.exchanges.kraken import KrakenAdapter
         return KrakenAdapter(api_key, api_secret, http_client=http_client)
+    elif exchange == "binancetr":
+        from app.exchanges.binancetr import BinanceTRAdapter
+        return BinanceTRAdapter(api_key, api_secret, http_client=http_client)
     else:
-        raise ValueError(f"Unsupported exchange: '{exchange}'. Supported: binance, bybit, okx, coinbase, kraken")
+        raise ValueError(f"Unsupported exchange: '{exchange}'. Supported: binance, bybit, okx, coinbase, kraken, binancetr")
 
 
-SUPPORTED_EXCHANGES = ["binance", "bybit", "okx", "coinbase", "kraken"]
+SUPPORTED_EXCHANGES = ["binance", "bybit", "okx", "coinbase", "kraken", "binancetr"]
