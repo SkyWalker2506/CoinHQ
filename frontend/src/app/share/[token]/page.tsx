@@ -3,18 +3,6 @@ import type { SharedPortfolioView } from "@/lib/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export const metadata: Metadata = {
-  openGraph: {
-    title: 'Crypto Portfolio — CoinHQ',
-    description: 'View this crypto portfolio shared via CoinHQ',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary',
-    title: 'Crypto Portfolio — CoinHQ',
-  },
-}
-
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params;
   try {
