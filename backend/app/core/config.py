@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
+    BACKEND_URL: str = ""
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]

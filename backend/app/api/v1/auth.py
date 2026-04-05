@@ -24,8 +24,11 @@ SCOPES = "openid email profile"
 
 
 def _redirect_uri(request: Request) -> str:
-    """Build the OAuth callback URI dynamically from the incoming request base URL."""
-    base = str(request.base_url).rstrip("/")
+    """Build the OAuth callback URI. Use BACKEND_URL env var if set (required in production)."""
+    if settings.BACKEND_URL:
+        base = settings.BACKEND_URL.rstrip("/")
+    else:
+        base = str(request.base_url).rstrip("/")
     return f"{base}/api/v1/auth/google/callback"
 
 
