@@ -58,11 +58,44 @@ Bu dosya ürün gereksinimlerini içerir. Implementasyon detayları için `READM
 
 ---
 
-## Phase 2+ (Sonraki)
+## Phase 2 — Yetkilendirilmiş Yönetici & Al/Sat
+
+### API Key Modeli
+- Profil sahibi sisteme **iki ayrı API key** girebilir:
+  - **Read-only key:** sadece bakiye/veri görme
+  - **Trade key:** al/sat yetkisi olan (exchange'de ayrıca oluşturulur)
+- Trade key girilmemişse al/sat özelliği hiç görünmez
+
+### Yönetici Yetkilendirmesi
+- Profil sahibi, bir danışmana/yöneticiye "işlem yapma" izni verebilir
+- Yönetici sisteme girmez; paylaşım tokenına ek izinler eklenir
+- Profil sahibi her an izni geri alabilir veya kısıtlayabilir
+
+### İzin Granülaritesi (profil sahibi tam kontrol)
+Profil sahibi yöneticiye şunları ayrı ayrı açıp kapayabilir:
+- Hangi borsalarda işlem yapabilir (örn. sadece Binance, Bybit değil)
+- Hangi coinlerde işlem yapabilir (whitelist: BTC, ETH; diğerleri kilitli)
+- Maksimum tek işlem tutarı (örn. 500 USD üstü işlem yapamaz)
+- Günlük toplam işlem limiti (örn. günde max 2000 USD)
+- Sadece satış / sadece alış / her ikisi
+- İşlem onayı: her işlem öncesi profil sahibine bildirim gönder, onay iste (opsiyonel)
+
+### Yönetici Deneyimi
+- Yönetici, izin verilen varlıkları ve limitleri görür
+- İzin dışı işlem denemeleri reddedilir (backend'de doğrulanır, exchange'e gitmez bile)
+- Tüm işlemler loglanır: kim, ne zaman, hangi coin, kaç USD
+
+### Güvenlik
+- Trade key asla yöneticiye gösterilmez — backend proxy olarak çalışır
+- Yönetici bir trade emri gönderir → backend izinleri kontrol eder → uygunsa exchange API'sine imzalı istek atar
+- İzin ihlali tespit edilirse token otomatik devre dışı bırakılır ve profil sahibine bildirim gider
+
+---
+
+## Phase 3+ (Sonraki)
 
 - PnL hesaplama (realized / unrealized)
 - Trade history görüntüleme
 - Gelişmiş grafikler
 - Email / Telegram uyarıları
 - AI insight katmanı (trend analizi, risk uyarıları)
-- Trade otomasyonu (opsiyonel, ayrı izin)
