@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "cd backend && curl -LsSf https://astral.sh/uv/install.sh | sh && . $HOME/.local/bin/env && uv sync"
+buildCommand = "cd backend && curl -LsSf https://astral.sh/uv/install.sh | sh && . $HOME/.local/bin/env && uv python pin 3.12 && uv sync"
 
 [deploy]
 startCommand = "cd backend && $HOME/.local/bin/uv run alembic upgrade head && $HOME/.local/bin/uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"
