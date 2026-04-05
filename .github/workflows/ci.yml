@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
       - name: Install dependencies
         run: cd backend && uv sync --all-extras
       - name: Lint
