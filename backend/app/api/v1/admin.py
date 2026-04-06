@@ -1,18 +1,22 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from fastapi import Depends
+
 from app.core.database import get_db
-from app.models.user import User
+from app.core.security import get_current_user
+from app.models.exchange_key import ExchangeKey
 from app.models.profile import Profile
 from app.models.share_link import ShareLink
-from app.models.exchange_key import ExchangeKey
+from app.models.user import User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/stats")
-async def get_stats(db: AsyncSession = Depends(get_db)):
+async def get_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     user_count = await db.scalar(select(func.count(User.id)))
     profile_count = await db.scalar(select(func.count(Profile.id)))
     share_count = await db.scalar(

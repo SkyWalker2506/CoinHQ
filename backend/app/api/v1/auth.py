@@ -5,6 +5,7 @@ Google OAuth 2.0 flow:
 """
 
 import httpx
+import pydantic
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import create_access_token
+from app.core.security import create_access_token, create_refresh_token, decode_refresh_token
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -56,7 +57,7 @@ async def google_callback(
 ):
     """Exchange authorization code for tokens, upsert user, issue JWT."""
     if error or not code:
-        raise HTTPException(status_code=400, detail=f"OAuth error: {error or 'missing code'}")
+        raise HTTPException(status_code=401, detail=f"OAuth error: {error or 'missing code'}")
 
     redirect_uri = _redirect_uri(request)
 
@@ -74,7 +75,7 @@ async def google_callback(
         )
 
     if token_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to exchange OAuth code")
+        raise HTTPException(status_code=401, detail="Failed to exchange OAuth code")
 
     tokens = token_resp.json()
     access_token = tokens.get("access_token")
@@ -87,7 +88,7 @@ async def google_callback(
         )
 
     if userinfo_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to fetch user info from Google")
+        raise HTTPException(status_code=401, detail="Failed to fetch user info from Google")
 
     userinfo = userinfo_resp.json()
     google_id = userinfo.get("sub")
@@ -112,6 +113,21 @@ async def google_callback(
         user.name = name
         await db.commit()
 
-    jwt_token = create_access_token(user.id)
-    frontend_redirect = f"{settings.FRONTEND_URL}/auth/callback?token={jwt_token}"
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+    frontend_redirect = (
+        f"{settings.FRONTEND_URL}/auth/callback"
+        f"?token={access_token}&refresh_token={refresh_token}"
+    )
     return RedirectResponse(url=frontend_redirect)
+
+
+class RefreshRequest(pydantic.BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh")
+async def refresh_access_token(body: RefreshRequest):
+    """Exchange a valid refresh token for a new access token."""
+    user_id = decode_refresh_token(body.refresh_token)
+    return {"access_token": create_access_token(user_id), "token_type": "bearer"}

@@ -6,7 +6,6 @@ from urllib.parse import urlencode
 
 import httpx
 
-from app.core.logging import logger
 from app.exchanges.base import ExchangeAdapter
 from app.schemas.portfolio import Balance
 

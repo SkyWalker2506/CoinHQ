@@ -5,10 +5,10 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from sqlalchemy import text
 
 from app.api.v1.router import router as api_router
 from app.core.config import settings
@@ -20,6 +20,11 @@ from app.core.logging import setup_logging
 async def lifespan(app: FastAPI):
     # Startup
     setup_logging(log_level="DEBUG" if settings.DEBUG else "INFO")
+    # Fail fast if required secrets are missing
+    if not settings.JWT_SECRET:
+        raise RuntimeError("JWT_SECRET is not set. Application cannot start.")
+    if not settings.ENCRYPTION_KEY:
+        raise RuntimeError("ENCRYPTION_KEY is not set. Application cannot start.")
     app.state.redis = await aioredis.from_url(settings.REDIS_URL, decode_responses=True)
     app.state.http_client = httpx.AsyncClient(timeout=30.0)
     if settings.DEBUG:

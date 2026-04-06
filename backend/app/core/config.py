@@ -18,7 +18,8 @@ class Settings(BaseSettings):
 
     # JWT
     JWT_SECRET: str  # required
-    JWT_EXPIRE_MINUTES: int = 10080  # 7 days
+    JWT_ACCESS_EXPIRE_MINUTES: int = 1440   # 24 hours
+    JWT_REFRESH_EXPIRE_MINUTES: int = 10080  # 7 days
 
     # Google OAuth
     GOOGLE_CLIENT_ID: str = ""

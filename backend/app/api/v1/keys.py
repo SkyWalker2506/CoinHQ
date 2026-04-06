@@ -22,8 +22,10 @@ async def _get_owned_profile(
 ) -> Profile:
     """Return profile if it belongs to current_user, else 404."""
     profile = await db.get(Profile, profile_id)
-    if not profile or profile.user_id != current_user.id:
+    if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+    if profile.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     return profile
 
 

@@ -56,9 +56,34 @@ _bearer = HTTPBearer()
 
 
 def create_access_token(user_id: int) -> str:
-    expire = datetime.now(UTC) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
-    payload = {"sub": str(user_id), "exp": expire}
+    expire = datetime.now(UTC) + timedelta(minutes=settings.JWT_ACCESS_EXPIRE_MINUTES)
+    payload = {"sub": str(user_id), "exp": expire, "type": "access"}
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=ALGORITHM)
+
+
+def create_refresh_token(user_id: int) -> str:
+    expire = datetime.now(UTC) + timedelta(minutes=settings.JWT_REFRESH_EXPIRE_MINUTES)
+    payload = {"sub": str(user_id), "exp": expire, "type": "refresh"}
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=ALGORITHM)
+
+
+def decode_refresh_token(token: str) -> int:
+    """Validate a refresh token and return user_id. Raises HTTPException on failure."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise credentials_exception
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+        return int(user_id)
+    except JWTError:
+        raise credentials_exception
 
 
 async def get_current_user(

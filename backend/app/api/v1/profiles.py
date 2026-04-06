@@ -57,8 +57,10 @@ async def get_profile(
     current_user: User = Depends(get_current_user),
 ):
     profile = await db.get(Profile, profile_id)
-    if not profile or profile.user_id != current_user.id:
+    if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+    if profile.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     return profile
 
 
@@ -69,7 +71,9 @@ async def delete_profile(
     current_user: User = Depends(get_current_user),
 ):
     profile = await db.get(Profile, profile_id)
-    if not profile or profile.user_id != current_user.id:
+    if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+    if profile.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     await db.delete(profile)
     await db.commit()
