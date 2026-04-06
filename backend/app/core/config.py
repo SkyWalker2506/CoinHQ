@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
+    @property
+    def cors_origins(self) -> list[str]:
+        origins = list(self.CORS_ORIGINS)
+        if self.FRONTEND_URL and self.FRONTEND_URL not in origins:
+            origins.append(self.FRONTEND_URL)
+        return origins
+
     # Rate limiting
     RATE_LIMIT_PORTFOLIO: str = "10/minute"
 
