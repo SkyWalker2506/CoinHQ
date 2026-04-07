@@ -39,8 +39,8 @@ async def _fetch_exchange_balance(
         balances = await adapter.get_balances()
         logger.info("api_key_used", key_id=key.id, exchange=key.exchange, profile_id=key.profile_id)
         return (key.exchange, balances)
-    except Exception as e:
-        _stdlib_logger.error("Failed to fetch balance from %s: %s", key.exchange, e)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        _stdlib_logger.error("Failed to fetch balance from %s (key_id=%s): %s", key.exchange, key.id, e)
         return None
 
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getShareLinks, revokeShareLink } from "@/lib/api";
 import type { Profile, ShareLink } from "@/lib/types";
 import CreateShareLinkModal from "./CreateShareLinkModal";
+import { ConfirmModal } from "./ConfirmModal";
 import { events } from "@/lib/analytics";
 
 interface Props {
@@ -18,20 +19,25 @@ const BASE_URL =
 export default function ShareLinkManager({ profiles }: Props) {
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
 
-  // Set default profile once profiles load
   useEffect(() => {
     if (selectedProfileId === null && profiles.length > 0) {
       setSelectedProfileId(profiles[0].id);
     }
   }, [profiles, selectedProfileId]);
+
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [createdLink, setCreatedLink] = useState<ShareLink | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<number | null>(null);
 
   const loadLinks = async () => {
-    const data = await getShareLinks(selectedProfileId ?? undefined).catch(() => []);
-    setLinks(data);
+    try {
+      const data = await getShareLinks(selectedProfileId ?? undefined);
+      setLinks(data);
+    } catch {
+      setLinks([]);
+    }
   };
 
   useEffect(() => {
@@ -39,9 +45,14 @@ export default function ShareLinkManager({ profiles }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProfileId]);
 
-  const handleRevoke = async (id: number) => {
-    if (!confirm("Revoke this share link? It will stop working immediately.")) return;
-    await revokeShareLink(id);
+  const handleRevoke = (id: number) => {
+    setRevokeTarget(id);
+  };
+
+  const confirmRevoke = async () => {
+    if (revokeTarget === null) return;
+    await revokeShareLink(revokeTarget);
+    setRevokeTarget(null);
     await loadLinks();
   };
 
@@ -49,6 +60,16 @@ export default function ShareLinkManager({ profiles }: Props) {
     const url = `${BASE_URL}/share/${token}`;
     navigator.clipboard.writeText(url).then(() => {
       events.shareLinkCopied();
+      setCopied(token);
+      setTimeout(() => setCopied(null), 2000);
+    }).catch(() => {
+      // Fallback: select text for manual copy
+      const input = document.createElement("input");
+      input.value = url;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
       setCopied(token);
       setTimeout(() => setCopied(null), 2000);
     });
@@ -216,6 +237,16 @@ export default function ShareLinkManager({ profiles }: Props) {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={revokeTarget !== null}
+        title="Revoke Share Link"
+        message="Revoke this share link? It will stop working immediately."
+        confirmLabel="Revoke"
+        destructive
+        onConfirm={confirmRevoke}
+        onCancel={() => setRevokeTarget(null)}
+      />
     </div>
   );
 }

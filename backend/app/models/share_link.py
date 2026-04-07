@@ -11,7 +11,7 @@ class ShareLink(Base):
     __tablename__ = "share_links"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"))
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
 
     # Permission flags

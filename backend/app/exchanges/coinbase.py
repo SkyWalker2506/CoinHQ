@@ -80,7 +80,7 @@ class CoinbaseAdapter(ExchangeAdapter):
 
         if resp.status_code == 401:
             logger.error("exchange_key_invalid", exchange="coinbase", key=self._mask_key())
-            return False
+            raise ValueError("Invalid API key or secret for Coinbase")
 
         resp.raise_for_status()
 
