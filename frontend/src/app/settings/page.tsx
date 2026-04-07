@@ -7,8 +7,8 @@ import type { Profile, ExchangeKey } from "@/lib/types";
 import AddProfileModal from "@/components/AddProfileModal";
 import AddKeyModal from "@/components/AddKeyModal";
 import ShareLinkManager from "@/components/ShareLinkManager";
-import Link from "next/link";
 import { Navigation } from "@/components/Navigation";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -16,6 +16,11 @@ export default function SettingsPage() {
   const [keys, setKeys] = useState<Record<number, ExchangeKey[]>>({});
   const [showAddProfile, setShowAddProfile] = useState(false);
   const [addKeyForProfile, setAddKeyForProfile] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -25,7 +30,6 @@ export default function SettingsPage() {
   const loadProfiles = async () => {
     const p = await getProfiles();
     setProfiles(p);
-    // Load keys for each profile
     const keyMap: Record<number, ExchangeKey[]> = {};
     await Promise.all(
       p.map(async (profile) => {
@@ -39,16 +43,28 @@ export default function SettingsPage() {
     loadProfiles();
   }, []);
 
-  const handleDeleteProfile = async (id: number) => {
-    if (!confirm("Delete this profile and all its API keys?")) return;
-    await deleteProfile(id);
-    await loadProfiles();
+  const handleDeleteProfile = (id: number) => {
+    setConfirmAction({
+      title: "Delete Profile",
+      message: "Delete this profile and all its API keys? This action cannot be undone.",
+      onConfirm: async () => {
+        setConfirmAction(null);
+        await deleteProfile(id);
+        await loadProfiles();
+      },
+    });
   };
 
-  const handleDeleteKey = async (profileId: number, keyId: number) => {
-    if (!confirm("Remove this API key?")) return;
-    await deleteKey(profileId, keyId);
-    await loadProfiles();
+  const handleDeleteKey = (profileId: number, keyId: number) => {
+    setConfirmAction({
+      title: "Remove API Key",
+      message: "Remove this API key? You can always add it again later.",
+      onConfirm: async () => {
+        setConfirmAction(null);
+        await deleteKey(profileId, keyId);
+        await loadProfiles();
+      },
+    });
   };
 
   return (
@@ -147,6 +163,15 @@ export default function SettingsPage() {
           onAdded={loadProfiles}
         />
       )}
+      <ConfirmModal
+        isOpen={confirmAction !== null}
+        title={confirmAction?.title ?? ""}
+        message={confirmAction?.message ?? ""}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={confirmAction?.onConfirm ?? (() => {})}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
     </>
   );

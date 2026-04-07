@@ -61,7 +61,7 @@ function ExchangeItem({
       {/* Asset rows */}
       <div className="divide-y divide-gray-800">
         {displayed.length === 0 && (
-          <p className="text-sm text-gray-500 px-4 py-3">No results for "{search}"</p>
+          <p className="text-sm text-gray-500 px-4 py-3">No results for &ldquo;{search}&rdquo;</p>
         )}
         {displayed.map((balance) => {
           const pct =

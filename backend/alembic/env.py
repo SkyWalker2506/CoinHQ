@@ -19,7 +19,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import all models so Alembic detects them
-from app.models import ExchangeKey, Profile, ShareLink, User  # noqa: F401
+from app.models import ExchangeKey, Profile, ShareLink, User  # noqa: E402, F401
 
 target_metadata = Base.metadata
 

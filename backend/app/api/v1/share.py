@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -179,10 +179,7 @@ async def public_share_view(
     if not link:
         raise HTTPException(status_code=404, detail="Link not found or has been revoked")
 
-    link.view_count += 1
-    link.last_viewed_at = datetime.now(UTC)
-    await db.commit()
-
+    # Check expiry BEFORE incrementing view count
     if link.expires_at is not None:
         now = datetime.now(UTC)
         exp = link.expires_at
@@ -191,13 +188,24 @@ async def public_share_view(
         if now > exp:
             raise HTTPException(status_code=410, detail="This link has expired")
 
+    # Atomic view count increment (avoids race condition with concurrent requests)
+    await db.execute(
+        update(ShareLink)
+        .where(ShareLink.id == link.id)
+        .values(view_count=ShareLink.view_count + 1, last_viewed_at=datetime.now(UTC))
+    )
+    await db.commit()
+
+    profile = await db.get(Profile, link.profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile no longer exists")
+
     keys_result = await db.execute(
         select(ExchangeKey).where(ExchangeKey.profile_id == link.profile_id)
     )
     keys = keys_result.scalars().all()
 
-    profile = await db.get(Profile, link.profile_id)
-    portfolio = await get_portfolio(link.profile_id, profile.name if profile else "", keys)
+    portfolio = await get_portfolio(link.profile_id, profile.name, keys)
 
     grand_total = portfolio.total_usd
     filtered_exchanges: list[SharedExchange] = []
@@ -224,7 +232,7 @@ async def public_share_view(
 
     return SharedPortfolioView(
         token=token,
-        profile_name=profile.name if profile else "",
+        profile_name=profile.name,
         total_usd=portfolio.total_usd if link.show_total_value else None,
         exchanges=filtered_exchanges,
         show_total_value=link.show_total_value,

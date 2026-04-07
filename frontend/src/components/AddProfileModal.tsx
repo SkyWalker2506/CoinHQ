@@ -34,8 +34,8 @@ export default function AddProfileModal({ onClose, onCreated }: Props) {
       events.profileCreated();
       onCreated();
       onClose();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create profile");
     } finally {
       setLoading(false);
     }

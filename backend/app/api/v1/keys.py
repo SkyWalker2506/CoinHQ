@@ -1,4 +1,5 @@
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,8 +62,13 @@ async def add_key(
     # Validate key works before storing
     http_client = getattr(request.app.state, "http_client", None)
     adapter = get_adapter(payload.exchange, payload.api_key, payload.api_secret, http_client=http_client)
-    if not await adapter.validate_key():
-        raise HTTPException(status_code=400, detail="API key validation failed. Check key/secret and permissions.")
+    try:
+        if not await adapter.validate_key():
+            raise HTTPException(status_code=400, detail="API key validation failed. Check key/secret and permissions.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Could not reach exchange API. Please try again.")
 
     # Encrypt and store — never log plaintext keys
     key = ExchangeKey(

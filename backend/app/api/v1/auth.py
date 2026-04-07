@@ -4,6 +4,8 @@ Google OAuth 2.0 flow:
   GET /api/v1/auth/google/callback → exchange code → upsert user → JWT → frontend redirect
 """
 
+import secrets
+
 import httpx
 import pydantic
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -23,6 +25,19 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = "openid email profile"
 
+# In-memory store for OAuth state tokens (short-lived, CSRF protection)
+_oauth_states: dict[str, float] = {}
+_STATE_TTL_SECONDS = 600  # 10 minutes
+
+
+def _cleanup_expired_states() -> None:
+    """Remove expired state tokens."""
+    import time
+    now = time.time()
+    expired = [k for k, v in _oauth_states.items() if now - v > _STATE_TTL_SECONDS]
+    for k in expired:
+        _oauth_states.pop(k, None)
+
 
 def _redirect_uri(request: Request) -> str:
     """Build the OAuth callback URI. Use BACKEND_URL env var if set (required in production)."""
@@ -36,6 +51,13 @@ def _redirect_uri(request: Request) -> str:
 @router.get("/google")
 async def google_login(request: Request):
     """Redirect user to Google OAuth consent screen."""
+    import time
+
+    _cleanup_expired_states()
+
+    state = secrets.token_urlsafe(32)
+    _oauth_states[state] = time.time()
+
     redirect_uri = _redirect_uri(request)
     params = (
         f"?client_id={settings.GOOGLE_CLIENT_ID}"
@@ -44,6 +66,7 @@ async def google_login(request: Request):
         f"&scope={SCOPES.replace(' ', '%20')}"
         f"&access_type=offline"
         f"&prompt=select_account"
+        f"&state={state}"
     )
     return RedirectResponse(url=GOOGLE_AUTH_URL + params)
 
@@ -53,11 +76,19 @@ async def google_callback(
     request: Request,
     code: str | None = None,
     error: str | None = None,
+    state: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Exchange authorization code for tokens, upsert user, issue JWT."""
     if error or not code:
         raise HTTPException(status_code=401, detail=f"OAuth error: {error or 'missing code'}")
+
+    # Validate CSRF state parameter
+    import time
+    if not state or state not in _oauth_states:
+        raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
+    if time.time() - _oauth_states.pop(state) > _STATE_TTL_SECONDS:
+        raise HTTPException(status_code=403, detail="OAuth state expired, please try again")
 
     redirect_uri = _redirect_uri(request)
 

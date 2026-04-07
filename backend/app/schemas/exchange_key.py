@@ -1,12 +1,12 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ExchangeKeyCreate(BaseModel):
-    exchange: str  # "binance", "bybit", "okx"
-    api_key: str
-    api_secret: str
+    exchange: str = Field(..., min_length=1, max_length=50)
+    api_key: str = Field(..., min_length=8, max_length=512)
+    api_secret: str = Field(..., min_length=8, max_length=1024)
 
 
 class ExchangeKeyRead(BaseModel):

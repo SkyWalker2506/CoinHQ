@@ -108,7 +108,7 @@ class KrakenAdapter(ExchangeAdapter):
 
         if resp.status_code == 403:
             logger.error("exchange_key_invalid", exchange="kraken", key=self._mask_key())
-            return False
+            raise ValueError("Invalid API key or permissions for Kraken")
 
         resp.raise_for_status()
         result = resp.json()
@@ -120,6 +120,6 @@ class KrakenAdapter(ExchangeAdapter):
                 # Key is valid but restricted — acceptable for read-only use
                 return True
             logger.error("exchange_key_invalid", exchange="kraken", key=self._mask_key(), errors=errors)
-            return False
+            raise ValueError(f"Kraken API key error: {errors}")
 
         return True

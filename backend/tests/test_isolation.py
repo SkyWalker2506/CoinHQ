@@ -1,11 +1,11 @@
 """Tests for multi-user data isolation (COIN-73)."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.api.v1.profiles import delete_profile, get_profile
 from app.api.v1.keys import _get_owned_profile
+from app.api.v1.profiles import delete_profile, get_profile
 
 
 def _make_user(user_id: int):

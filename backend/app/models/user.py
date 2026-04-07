@@ -1,5 +1,5 @@
 
-from enum import Enum as PyEnum
+from enum import StrEnum
 
 from sqlalchemy import Column, DateTime, Integer, String, func
 from sqlalchemy.orm import relationship
@@ -7,9 +7,10 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
-class UserTier(str, PyEnum):
+class UserTier(StrEnum):
     FREE = "free"
     PREMIUM = "premium"
+    ADMIN = "admin"
 
 
 class User(Base):

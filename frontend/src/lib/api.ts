@@ -10,10 +10,33 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
 function getAuthHeader(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const token = localStorage.getItem("token");
+  const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (!refreshToken) return null;
+
+  try {
+    const res = await fetch(`${BASE_URL}/api/v1/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    localStorage.setItem("token", data.access_token);
+    return data.access_token;
+  } catch {
+    return null;
+  }
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -25,6 +48,36 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       ...(options?.headers as Record<string, string> | undefined),
     },
   });
+
+  // Handle expired token — try refresh once
+  if (res.status === 401 && getToken()) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      const retryRes = await fetch(`${BASE_URL}${path}`, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${newToken}`,
+          ...(options?.headers as Record<string, string> | undefined),
+        },
+      });
+      if (retryRes.ok) return retryRes.json();
+      if (retryRes.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("refresh_token");
+        window.location.href = "/login";
+        throw new Error("Session expired. Please log in again.");
+      }
+      const error = await retryRes.json().catch(() => ({ detail: retryRes.statusText }));
+      throw new Error(error.detail ?? "Request failed");
+    }
+    // Refresh failed — clear tokens and redirect
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh_token");
+    window.location.href = "/login";
+    throw new Error("Session expired. Please log in again.");
+  }
+
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail ?? "Request failed");

@@ -114,8 +114,8 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
       events.exchangeConnected(exchange);
       onAdded();
       onClose();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add API key");
     } finally {
       setLoading(false);
     }
