@@ -14,6 +14,10 @@ import { PortfolioSkeleton } from "@/components/SkeletonCard";
 import { Navigation } from "@/components/Navigation";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 
+function isAggregate(p: PortfolioResponse | AggregatePortfolioResponse): p is AggregatePortfolioResponse {
+  return "grand_total_usd" in p;
+}
+
 const AllocationChart = dynamic(() => import("@/components/AllocationChart"), { ssr: false });
 
 export default function DashboardPage() {
@@ -49,14 +53,15 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [selectedProfileId]);
 
-  const isAggregate = selectedProfileId === "aggregate";
-  const totalUsd = isAggregate
-    ? (portfolio as AggregatePortfolioResponse)?.grand_total_usd ?? 0
-    : (portfolio as PortfolioResponse)?.total_usd ?? 0;
+  const totalUsd = portfolio
+    ? isAggregate(portfolio) ? portfolio.grand_total_usd : portfolio.total_usd
+    : 0;
 
-  const exchanges = isAggregate
-    ? (portfolio as AggregatePortfolioResponse)?.profiles?.flatMap((p) => p.exchanges) ?? []
-    : (portfolio as PortfolioResponse)?.exchanges ?? [];
+  const exchanges = portfolio
+    ? isAggregate(portfolio)
+      ? portfolio.profiles?.flatMap((p) => p.exchanges) ?? []
+      : portfolio.exchanges ?? []
+    : [];
 
   return (
     <>
@@ -91,7 +96,7 @@ export default function DashboardPage() {
           <PortfolioSummary
             totalUsd={totalUsd}
             cached={
-              isAggregate
+              portfolio && isAggregate(portfolio)
                 ? undefined
                 : (portfolio as PortfolioResponse)?.cached
             }

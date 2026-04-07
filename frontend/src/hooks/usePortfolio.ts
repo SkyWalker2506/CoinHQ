@@ -2,9 +2,17 @@ import useSWR from 'swr'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
-const fetcher = (url: string) =>
-  fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
-    .then(r => r.json())
+const fetcher = async (url: string) => {
+  const token = localStorage.getItem('token')
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(error.detail ?? 'Request failed')
+  }
+  return res.json()
+}
 
 export function usePortfolio(profileId: number) {
   const { data, error, isLoading, mutate } = useSWR(

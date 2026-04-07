@@ -2,6 +2,7 @@
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -78,7 +79,14 @@ async def add_key(
         encrypted_secret=encrypt(payload.api_secret),
     )
     db.add(key)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"An API key for {payload.exchange} already exists on this profile. Remove it first to add a new one.",
+        )
     await db.refresh(key)
     logger.info("api_key_created", user_id=current_user.id, exchange=payload.exchange.lower(), key_id=key.id)
     return key

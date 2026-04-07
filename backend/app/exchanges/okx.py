@@ -85,8 +85,9 @@ class OKXAdapter(ExchangeAdapter):
 
         # Reject keys that have trade permissions — perm field contains "trade" for write-enabled keys
         perm = ""
-        if data.get("data"):
-            perm = data["data"][0].get("perm", "")
+        entries = data.get("data") or []
+        if entries:
+            perm = entries[0].get("perm", "")
         if "trade" in perm.lower():
             logger.error("exchange_write_permissions_rejected", exchange="okx", key=self._mask_key())
             raise ValueError("Write permissions detected. Only read-only API keys are accepted.")
