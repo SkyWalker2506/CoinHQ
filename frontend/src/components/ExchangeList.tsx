@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import type { ExchangeBalance } from "@/lib/types";
+import { useEffect, useState } from "react";
+import type { ExchangeBalance, MarketCoin } from "@/lib/types";
+import { getMarketListings } from "@/lib/api";
 import { EmptyState } from "./EmptyState";
+import CoinDetailModal from "./CoinDetailModal";
 
 interface Props {
   exchanges: ExchangeBalance[];
@@ -23,14 +25,28 @@ function formatAmount(value: number): string {
   return value.toFixed(6);
 }
 
+function ChangeIndicator({ value }: { value: number | null | undefined }) {
+  if (value == null) return null;
+  const color = value >= 0 ? "text-green-400" : "text-red-400";
+  return (
+    <span className={`text-[11px] font-medium ${color}`}>
+      {value >= 0 ? "+" : ""}{value.toFixed(1)}%
+    </span>
+  );
+}
+
 function ExchangeItem({
   exchange,
   total,
   search,
+  marketData,
+  onCoinClick,
 }: {
   exchange: ExchangeBalance;
   total: number;
   search: string;
+  marketData: Record<string, MarketCoin>;
+  onCoinClick: (symbol: string) => void;
 }) {
   const [showAll, setShowAll] = useState(false);
 
@@ -70,11 +86,14 @@ function ExchangeItem({
               : null;
 
           const noPriceBadge = (balance.usd_value === 0 || balance.usd_value === undefined);
+          const coinMarket = marketData[balance.asset];
 
           return (
-            <div
+            <button
               key={balance.asset}
-              className="flex items-center justify-between px-4 py-2.5"
+              type="button"
+              onClick={() => onCoinClick(balance.asset)}
+              className="flex items-center justify-between px-4 py-2.5 w-full text-left hover:bg-gray-800/40 transition-colors"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <span className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-300 shrink-0">
@@ -94,9 +113,12 @@ function ExchangeItem({
                 <p className="text-sm font-medium text-white">
                   {balance.usd_value ? formatUsd(balance.usd_value) : "—"}
                 </p>
-                {pct && !noPriceBadge && <p className="text-xs text-gray-500">{pct}%</p>}
+                <div className="flex items-center justify-end gap-2">
+                  {pct && !noPriceBadge && <span className="text-xs text-gray-500">{pct}%</span>}
+                  <ChangeIndicator value={coinMarket?.change_24h} />
+                </div>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -125,6 +147,14 @@ const EXCHANGE_LABELS: Record<string, string> = {
 export default function ExchangeList({ exchanges, onAddKey }: Props) {
   const [search, setSearch] = useState("");
   const [activeExchange, setActiveExchange] = useState<string | null>(null);
+  const [marketData, setMarketData] = useState<Record<string, MarketCoin>>({});
+  const [selectedCoin, setSelectedCoin] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMarketListings(200)
+      .then(setMarketData)
+      .catch(() => {});
+  }, []);
 
   if (exchanges.length === 0) {
     return (
@@ -205,9 +235,24 @@ export default function ExchangeList({ exchanges, onAddKey }: Props) {
 
       <div className="space-y-3">
         {filtered.map((exchange, idx) => (
-          <ExchangeItem key={idx} exchange={exchange} total={total} search={search} />
+          <ExchangeItem
+            key={idx}
+            exchange={exchange}
+            total={total}
+            search={search}
+            marketData={marketData}
+            onCoinClick={setSelectedCoin}
+          />
         ))}
       </div>
+
+      {selectedCoin && (
+        <CoinDetailModal
+          symbol={selectedCoin}
+          marketData={marketData[selectedCoin] ?? null}
+          onClose={() => setSelectedCoin(null)}
+        />
+      )}
     </div>
   );
 }

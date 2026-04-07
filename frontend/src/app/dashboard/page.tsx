@@ -13,6 +13,7 @@ import Link from "next/link";
 import { PortfolioSkeleton } from "@/components/SkeletonCard";
 import { Navigation } from "@/components/Navigation";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { GlobalMarketBar } from "@/components/GlobalMarketBar";
 
 function isAggregate(p: PortfolioResponse | AggregatePortfolioResponse): p is AggregatePortfolioResponse {
   return "grand_total_usd" in p;
@@ -66,6 +67,7 @@ export default function DashboardPage() {
   return (
     <>
       {showOnboarding && <OnboardingWizard onComplete={() => setShowOnboarding(false)} />}
+      <GlobalMarketBar />
       <Navigation />
     <div className="max-w-6xl mx-auto px-4 py-8">
 
