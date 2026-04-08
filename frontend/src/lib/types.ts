@@ -99,3 +99,39 @@ export interface SharedPortfolioView {
   show_allocation_pct: boolean;
   allow_follow: boolean;
 }
+
+// Market data (CoinMarketCap)
+export interface GlobalMetrics {
+  total_market_cap: number | null;
+  total_volume_24h: number | null;
+  btc_dominance: number | null;
+  eth_dominance: number | null;
+  active_cryptocurrencies: number | null;
+  total_market_cap_change_24h: number | null;
+}
+
+export interface MarketCoin {
+  name: string;
+  symbol: string;
+  rank: number;
+  price: number | null;
+  change_1h: number | null;
+  change_24h: number | null;
+  change_7d: number | null;
+  market_cap: number | null;
+  volume_24h: number | null;
+}
+
+export interface CoinInfo {
+  name: string;
+  symbol: string;
+  slug: string;
+  description: string | null;
+  logo: string | null;
+  website: string | null;
+  explorer: string | null;
+  twitter: string | null;
+  tags: string[];
+  date_added: string | null;
+  category: string | null;
+}

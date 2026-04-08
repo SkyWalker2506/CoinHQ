@@ -40,8 +40,12 @@ class Settings(BaseSettings):
     # Rate limiting
     RATE_LIMIT_PORTFOLIO: str = "10/minute"
 
-    # CoinGecko
+    # CoinGecko (legacy, unused)
     COINGECKO_BASE_URL: str = "https://api.coingecko.com/api/v3"
+
+    # CoinMarketCap
+    CMC_API_KEY: str = ""  # optional — enables CMC as fallback price provider
+    CMC_BASE_URL: str = "https://pro-api.coinmarketcap.com"
 
     # Cache TTL (seconds)
     PORTFOLIO_CACHE_TTL: int = 60

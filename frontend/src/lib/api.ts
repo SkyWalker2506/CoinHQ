@@ -6,6 +6,9 @@ import type {
   ShareLink,
   ShareLinkCreate,
   SharedPortfolioView,
+  GlobalMetrics,
+  MarketCoin,
+  CoinInfo,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -142,3 +145,16 @@ export const revokeShareLink = (id: number) =>
 
 export const getPublicShare = (token: string) =>
   request<SharedPortfolioView>(`/api/v1/public/share/${token}`);
+
+// Market Data (CoinMarketCap)
+export const getGlobalMetrics = () =>
+  request<GlobalMetrics>("/api/v1/market/global");
+
+export const getMarketListings = (limit = 100) =>
+  request<Record<string, MarketCoin>>(`/api/v1/market/listings?limit=${limit}`);
+
+export const getCoinInfo = (symbol: string) =>
+  request<CoinInfo>(`/api/v1/market/coin/${symbol}`);
+
+export const getCoinsInfo = (symbols: string[]) =>
+  request<Record<string, CoinInfo>>(`/api/v1/market/coins?symbols=${symbols.join(",")}`);

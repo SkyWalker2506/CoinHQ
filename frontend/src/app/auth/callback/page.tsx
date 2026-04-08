@@ -8,8 +8,12 @@ function AuthCallbackInner() {
 
   useEffect(() => {
     const token = searchParams.get('token')
+    const refreshToken = searchParams.get('refresh_token')
     if (token) {
       localStorage.setItem('token', token)
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken)
+      }
       router.replace('/dashboard')
     } else {
       router.replace('/login?error=auth_failed')

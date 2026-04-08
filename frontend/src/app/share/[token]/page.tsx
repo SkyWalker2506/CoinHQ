@@ -113,7 +113,7 @@ export default async function SharePage({
               {ex.assets.length === 0 ? (
                 <p className="text-sm text-gray-600 px-5 py-4">No assets</p>
               ) : (
-                <table className="w-full text-sm">
+                <table className="w-full text-sm" aria-label="Asset breakdown">
                   <thead>
                     <tr className="text-xs text-gray-500 border-b border-gray-800">
                       <th className="px-5 py-2 text-left font-medium">Asset</th>
