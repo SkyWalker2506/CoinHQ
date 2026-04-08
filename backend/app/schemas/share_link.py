@@ -27,6 +27,8 @@ class ShareLinkResponse(BaseModel):
     label: str | None
     created_at: datetime
     allow_follow: bool = True
+    view_count: int = 0
+    last_viewed_at: datetime | None = None
 
     @computed_field
     @property

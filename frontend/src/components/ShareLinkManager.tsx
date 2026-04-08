@@ -158,6 +158,14 @@ export default function ShareLinkManager({ profiles }: Props) {
                   <span className="text-xs text-gray-500">
                     Expires: {formatExpiry(link.expires_at)}
                   </span>
+                  <span className="text-xs text-blue-400 font-medium">
+                    {link.view_count} {link.view_count === 1 ? "view" : "views"}
+                  </span>
+                  {link.last_viewed_at && (
+                    <span className="text-xs text-gray-600">
+                      Last: {new Date(link.last_viewed_at).toLocaleDateString()}
+                    </span>
+                  )}
                   <span className="text-xs text-gray-600">
                     {[
                       link.show_total_value && "total",

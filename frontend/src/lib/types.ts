@@ -62,6 +62,8 @@ export interface ShareLink {
   created_at: string;
   share_url: string;
   allow_follow: boolean;
+  view_count: number;
+  last_viewed_at: string | null;
 }
 
 export interface ShareLinkCreate {
