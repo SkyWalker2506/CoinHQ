@@ -8,9 +8,10 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 interface Props {
   onClose: () => void;
   onCreated: () => void;
+  onTierLimit?: (message: string) => void;
 }
 
-export default function AddProfileModal({ onClose, onCreated }: Props) {
+export default function AddProfileModal({ onClose, onCreated, onTierLimit }: Props) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +36,13 @@ export default function AddProfileModal({ onClose, onCreated }: Props) {
       onCreated();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create profile");
+      const msg = err instanceof Error ? err.message : "Failed to create profile";
+      if (msg.toLowerCase().includes("free tier") || msg.toLowerCase().includes("upgrade")) {
+        onTierLimit?.(msg);
+        onClose();
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
