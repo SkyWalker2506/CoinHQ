@@ -29,13 +29,21 @@ async def get_stats(
         select(func.count(ShareLink.id)).where(ShareLink.is_active == True)  # noqa: E712
     )
 
+    exchange_key_count = await db.scalar(select(func.count(ExchangeKey.id)))
+
     exchange_dist_rows = await db.execute(
         select(ExchangeKey.exchange, func.count(ExchangeKey.id)).group_by(ExchangeKey.exchange)
+    )
+
+    tier_dist_rows = await db.execute(
+        select(User.tier, func.count(User.id)).group_by(User.tier)
     )
 
     return {
         "users": user_count,
         "profiles": profile_count,
+        "exchange_keys": exchange_key_count,
         "active_share_links": share_count,
         "exchanges": {row[0]: row[1] for row in exchange_dist_rows},
+        "tiers": {row[0]: row[1] for row in tier_dist_rows},
     }

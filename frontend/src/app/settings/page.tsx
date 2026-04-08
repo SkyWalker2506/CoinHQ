@@ -9,6 +9,7 @@ import AddKeyModal from "@/components/AddKeyModal";
 import ShareLinkManager from "@/components/ShareLinkManager";
 import { Navigation } from "@/components/Navigation";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { UpgradeBanner } from "@/components/UpgradeBanner";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function SettingsPage() {
     message: string;
     onConfirm: () => void;
   } | null>(null);
+  const [tierLimitMessage, setTierLimitMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -81,6 +83,13 @@ export default function SettingsPage() {
           Add Profile
         </button>
       </div>
+
+      {/* Tier limit banner */}
+      {tierLimitMessage && (
+        <div className="mb-6">
+          <UpgradeBanner message={tierLimitMessage} />
+        </div>
+      )}
 
       {/* Profiles list */}
       <div className="space-y-4">
@@ -154,6 +163,7 @@ export default function SettingsPage() {
         <AddProfileModal
           onClose={() => setShowAddProfile(false)}
           onCreated={loadProfiles}
+          onTierLimit={(msg) => setTierLimitMessage(msg)}
         />
       )}
       {addKeyForProfile !== null && (
