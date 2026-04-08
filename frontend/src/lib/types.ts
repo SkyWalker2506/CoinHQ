@@ -135,3 +135,73 @@ export interface CoinInfo {
   date_added: string | null;
   category: string | null;
 }
+
+// Trading Analysis (TradingView MCP)
+export interface TradingSummary {
+  recommendation: string;
+  buy: number;
+  sell: number;
+  neutral: number;
+}
+
+export interface TradingPrice {
+  close: number | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  volume: number | null;
+  change: number | null;
+}
+
+export interface TradingIndicators {
+  rsi: number | null;
+  macd: { macd: number | null; signal: number | null };
+  bollinger: { upper: number | null; lower: number | null; basis: number | null };
+  ema: Record<string, number | null>;
+  sma: Record<string, number | null>;
+  adx: number | null;
+  atr: number | null;
+  stoch_k: number | null;
+  stoch_d: number | null;
+  cci: number | null;
+}
+
+export interface CoinAnalysis {
+  symbol: string;
+  exchange: string;
+  interval: string;
+  summary: TradingSummary;
+  price: TradingPrice;
+  indicators: TradingIndicators;
+  metrics: Record<string, unknown>;
+  momentum: Record<string, unknown>;
+  bb_signal: Record<string, unknown>;
+}
+
+export interface MultiTimeframeAnalysis {
+  symbol: string;
+  exchange: string;
+  timeframes: Record<string, CoinAnalysis & { error?: string }>;
+  alignment: string;
+}
+
+export interface BacktestResult {
+  symbol: string;
+  strategy: string;
+  period: string;
+  total_return_pct: number;
+  sharpe_ratio: number | null;
+  max_drawdown_pct: number | null;
+  win_rate: number | null;
+  total_trades: number;
+  final_equity: number;
+  buy_hold_return_pct: number | null;
+  trade_log?: Array<Record<string, unknown>>;
+  error?: string;
+}
+
+export interface StrategyComparison {
+  symbol: string;
+  results: Record<string, BacktestResult>;
+  best_strategy: string;
+}

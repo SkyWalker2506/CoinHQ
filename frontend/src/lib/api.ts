@@ -9,6 +9,10 @@ import type {
   GlobalMetrics,
   MarketCoin,
   CoinInfo,
+  CoinAnalysis,
+  MultiTimeframeAnalysis,
+  BacktestResult,
+  StrategyComparison,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -158,3 +162,51 @@ export const getCoinInfo = (symbol: string) =>
 
 export const getCoinsInfo = (symbols: string[]) =>
   request<Record<string, CoinInfo>>(`/api/v1/market/coins?symbols=${symbols.join(",")}`);
+
+// Trading Analysis (TradingView)
+export const getCoinAnalysis = (
+  symbol: string,
+  exchange = "BINANCE",
+  interval = "1h"
+) =>
+  request<CoinAnalysis>(
+    `/api/v1/trading/analysis/${symbol}?exchange=${exchange}&interval=${interval}`
+  );
+
+export const getMultiTimeframeAnalysis = (
+  symbol: string,
+  exchange = "BINANCE"
+) =>
+  request<MultiTimeframeAnalysis>(
+    `/api/v1/trading/analysis/${symbol}/multi?exchange=${exchange}`
+  );
+
+export const getMarketScreener = (
+  exchange = "BINANCE",
+  limit = 20,
+  timeframe?: string
+) => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (timeframe) params.set("timeframe", timeframe);
+  return request<Record<string, unknown>[]>(
+    `/api/v1/trading/screener/${exchange}?${params}`
+  );
+};
+
+export const runBacktest = (
+  symbol: string,
+  strategy = "rsi",
+  period = "1y",
+  initialCapital = 10000
+) =>
+  request<BacktestResult>(
+    `/api/v1/trading/backtest?symbol=${symbol}&strategy=${strategy}&period=${period}&initial_capital=${initialCapital}`
+  );
+
+export const compareStrategies = (symbol: string, period = "1y") =>
+  request<StrategyComparison>(
+    `/api/v1/trading/backtest/compare?symbol=${symbol}&period=${period}`
+  );
+
+export const getMarketSnapshot = () =>
+  request<Record<string, unknown>>("/api/v1/trading/snapshot");
