@@ -1,5 +1,12 @@
 'use client'
+import { useEffect } from 'react'
+import { captureError } from '@/lib/sentry'
+
 export default function GlobalError({ error, reset }: { error: Error; reset: () => void }) {
+  useEffect(() => {
+    captureError(error, { source: 'GlobalError' })
+  }, [error])
+
   return (
     <html>
       <body className="bg-gray-950 flex items-center justify-center min-h-screen">
