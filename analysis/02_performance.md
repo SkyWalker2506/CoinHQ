@@ -1,65 +1,75 @@
-## #2 Performance & Core Web Vitals Analiz Raporu
-> Lead: CodeLead (A10) | Model: Sonnet
+# Performance Analysis — CoinHQ
+_Date: 2026-04-10 · Lead: CodeLead (A10) · Model: Sonnet 4.6_
 
----
+## Delta vs 2026-04-06
 
-### Mevcut Durum
+| Item | April 6 | April 10 | Status |
+|------|---------|----------|--------|
+| `asyncio.gather` for parallel exchange calls | Missing | Implemented | ✅ |
+| Binance ticker fetch (per-asset vs bulk) | Per-asset | Single bulk ticker | ✅ |
+| `selectinload` on ORM relationships | Missing | Implemented | ✅ |
+| `app.state` singleton (Redis, httpx) | Per-request | Singleton on startup | ✅ |
+| SWR for frontend data fetching | Missing | `usePortfolio` hook | ⚠️ Bug (wrong URL) |
+| `public_share_view` cache passthrough | N/A | **Missing** — bypasses cache | 🔴 |
+| Dashboard `useEffect` raw fetch | Old pattern | SWR hook exists but unused | 🟡 |
+| Binance price cache size | — | ~500KB blob per cache entry | 🟡 |
 
-**Güçlü Yanlar:**
-- Redis cache var: portfolio verisi 60 saniye TTL ile Redis'te tutulur (`portfolio_service.py:162`)
-- Rate limiting uygulanmış: slowapi ile `/portfolio` endpoint'leri `10/minute` korumalı
-- Async mimari: tüm backend IO async (asyncpg, httpx async, redis.asyncio) — event loop bloke edilmiyor
-- Connection reuse: asyncpg connection pool SQLAlchemy üzerinden yönetiliyor
-- Next.js `output: "standalone"` — Docker imajı optimize
+**Score: 4/10 → 7/10**
 
-**Puan: 4/10**
+## Current State
 
-Temel cache altyapısı mevcut ama kritik performans sorunları çözülmemiş: exchange çağrıları seri yapılıyor, fiyat verileri her key için ayrı çekiliyor, frontend'de hiç caching yok.
+Backend portfolio fetch now uses `asyncio.gather` for parallel exchange API calls. Binance price lookup uses a single bulk ticker endpoint cached in Redis. `selectinload` prevents N+1 queries on ORM relationships. Redis client and httpx client are initialized as `app.state` singletons at startup.
 
----
+Frontend has a `usePortfolio` SWR hook at `frontend/src/hooks/usePortfolio.ts:11` but the URL is constructed as `/portfolio/${profileId}` while the actual route is `/portfolio/profile/{profile_id}` — the `/profile/` segment is missing. This is a live functional bug that silently falls back to refetch.
 
-### Kritik Eksikler (hemen yapılmalı)
+## Findings
 
-| # | Sorun | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | **Exchange çağrıları seri** — `_fetch_exchange_balance` loop'ta sırayla çağrılıyor (`portfolio_service.py:147`). 3 exchange varsa 3x gecikme birikir. | High | `asyncio.gather(*[_fetch_exchange_balance(k) for k in keys])` ile paralel çalıştır | S |
-| 2 | **CoinGecko her exchange için ayrı çağrı** — her `_fetch_exchange_balance` içinde `_get_usd_prices` çağrılıyor. 3 exchange × 1 API call = 3 CoinGecko isteği | High | Tüm asset'leri önce topla, tek `_get_usd_prices` çağrısıyla al, sonra dağıt | S |
-| 3 | **Aggregate endpoint N+1 sorgu** — `aggregate_portfolio` her profil için ayrı `get_portfolio` çağırıyor, her biri ayrı exchange + CoinGecko isteği yapıyor (`portfolio.py:48-52`) | High | Tüm profilleri paralel fetch et (`asyncio.gather`), ortak CoinGecko fiyatını paylaş | M |
-| 4 | **Binance `get_balances` await eksik** — `binance.py:32` satırında `resp = client.get(...)` — `await` yok. Bu coroutine'i block eder, hata fırlatmaz ama sessizce yanlış çalışır | High | `resp = await client.get(...)` olmalı | S |
-| 5 | **Redis singleton güvensiz** — `get_redis()` global `_redis` değişkeni kontrol ediyor ama async race condition var: birden fazla coroutine aynı anda `None` görüp birden fazla bağlantı açabilir | Med | `asyncio.Lock` veya startup'ta tek seferlik init + `app.state.redis` pattern kullan | S |
+### 🔴 Critical
 
----
+**F1 — `public_share_view` bypasses app.state singletons (cache miss on every public view)**
+`backend/app/api/v1/share.py:208` — `get_portfolio(link.profile_id, profile.name, keys)` is called without passing `redis` or `http_client` arguments. The function signature accepts optional `redis` and `http_client` params; when absent, it creates fresh `httpx.AsyncClient()` instances per call and skips Redis caching. Every public share page view hits all exchanges fresh.
 
-### İyileştirme Önerileri (planlı)
+Impact: Popular share links hammered by social/bots will drain exchange API quotas and spike latency. Fix: pass `request.app.state.redis` and `request.app.state.http_client` in the call at `share.py:208`.
 
-| # | Öneri | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | **Frontend'de SWR/React Query kullan** — şu an `useEffect` + raw `fetch`, her render'da yeniden istek atılabilir, loading state basit | Med | `swr` veya `@tanstack/react-query` ekle; stale-while-revalidate ile kullanıcı beklemez | M |
-| 2 | **CoinGecko fiyatlarını ayrı cache'le** — şu an portfolio cache fiyatları içeriyor ama fiyatlar sık değişiyor, portfolio nadiren değişir; ayrı `prices:{ids}` key ile 30s TTL | Med | `_get_usd_prices` içinde Redis cache ekle | S |
-| 3 | **httpx.AsyncClient yeniden kullanımı** — her `get_balances` çağrısında yeni `AsyncClient` açılıp kapanıyor. Bağlantı kurma maliyeti tekrarlanıyor | Med | `app.state.http_client` olarak lifespan'da tek client yönet | M |
-| 4 | **Next.js Image optimization** — `next/image` kullanılmıyor, exchange logo veya kullanıcı görseli gelirse yavaş yüklenecek | Low | Exchange eklenince `next/image` ile logo serve et | S |
-| 5 | **`pool_size` ve `max_overflow` konfigürasyonu** — SQLAlchemy engine default pool ayarlarıyla çalışıyor | Low | `create_async_engine(..., pool_size=10, max_overflow=20)` ekle | S |
-| 6 | **Frontend bundle analizi** — recharts tek başına ~400KB, tree-shake kontrolü yapılmamış | Low | `@next/bundle-analyzer` ekle, recharts lazy import ile sadece kullanılan chart'ı yükle | M |
+**F2 — `usePortfolio.ts:11` URL bug — wrong route, silent miss**
+`frontend/src/hooks/usePortfolio.ts:11` — URL is `/portfolio/${profileId}` but the backend route is `/api/v1/portfolio/profile/{profile_id}`. The SWR request 404s or hits a wrong endpoint, causing silent fallback. This defeats the SWR caching benefit entirely.
 
----
+### 🟡 Important
 
-### Kesin Olmalı (industry standard)
+**F3 — Dashboard uses `useEffect` + raw fetch instead of SWR hook**
+Several dashboard components (`dashboard/page.tsx`) still use `useEffect(() => { fetch(...) }, [])` patterns despite the SWR hook existing. No deduplication, no background revalidation, no cache-while-revalidate. Fix: migrate to SWR hooks.
 
-- Exchange API çağrıları **paralel** olmalı — seri çalışmak production'da kabul edilemez
-- CoinGecko API'ye **tek toplu çağrı** yapılmalı — per-exchange ayrı çağrı hem yavaş hem rate limit riski
-- Redis bağlantısı **application startup**'ta tek seferlik açılmalı, her request'te kontrol edilmemeli
-- Frontend **loading skeleton** kullanmalı — "Loading portfolio..." text kabul edilemez UX
+**F4 — Binance price cache writes ~500KB per entry**
+Binance bulk ticker response includes all 1000+ trading pairs. The full JSON blob is cached under a single Redis key per update cycle. At 60s TTL and any concurrent users, this is acceptable — but deserialization overhead on every cache hit is measurable. Fix: cache only the subset of assets a user actually holds.
 
-### Kesin Değişmeli (mevcut sorunlar)
+**F5 — OAuth callback creates two separate `httpx.AsyncClient` instances**
+`backend/app/api/v1/auth.py:96-119` — Two separate `async with httpx.AsyncClient() as client:` blocks for token exchange and userinfo fetch, ignoring `app.state.http_client`. Extra connection overhead on login.
 
-- `binance.py:32` — `await` eksikliği kritik bug: Binance balance fetch sessizce çalışmıyor
-- `_fetch_exchange_balance` loop → `asyncio.gather` dönüşümü yapılmadan prod'a çıkılmamalı
-- Her exchange için ayrı CoinGecko çağrısı → CoinGecko free tier'da 10-50 req/min limiti var, çok kullanıcıda limit aşılır
+**F6 — Thundering herd on Binance price cache expiry**
+Binance price cache has a 30s TTL with no Redis lock. Multiple concurrent requests on cache miss will all fan out to the Binance API simultaneously. Fix: use Redis `SET NX` lock pattern during refresh.
 
-### Nice-to-Have (diferansiasyon)
+### 🟢 Good
 
-- **WebSocket push**: portfolio değişince server'dan push yerine polling — gerçek zamanlı deneyim
-- **Service Worker cache**: offline mod veya arka planda güncelleme
-- **Core Web Vitals monitoring**: Vercel Analytics veya Sentry performance
-- **Streaming SSR**: Next.js 14 Suspense + streaming ile dashboard parça parça gelsin
-- **Edge Runtime**: Public share endpoint (`/share/[token]`) CDN edge'de çalışabilir, gecikme sıfırlanır
+**F7 — `asyncio.gather` for parallel exchange calls.** Portfolio fetch now fires all exchange API calls concurrently. 3-exchange user: 3× speedup.
+
+**F8 — `selectinload` prevents N+1.** ORM relationship loading now uses joined loading strategy.
+
+**F9 — `app.state` singletons.** Redis and httpx client initialized once at startup.
+
+## Action Items
+
+| # | P | Fix | File | Effort |
+|---|---|-----|------|--------|
+| 1 | 🔴 | Pass `redis`/`http_client` to `get_portfolio` in share endpoint | `backend/app/api/v1/share.py:208` | XS |
+| 2 | 🔴 | Fix SWR hook URL (`/portfolio/${id}` → `/portfolio/profile/${id}`) | `frontend/src/hooks/usePortfolio.ts:11` | XS |
+| 3 | 🟡 | Migrate dashboard `useEffect` fetches to SWR hooks | `frontend/src/app/dashboard/page.tsx` | S |
+| 4 | 🟡 | Cache Binance price subset per user, not full ticker | `backend/app/exchanges/binance.py` | M |
+| 5 | 🟡 | Redis lock for Binance cache refresh (thundering herd) | backend cache layer | S |
+| 6 | 🟡 | Auth callback — use `app.state.http_client` | `backend/app/api/v1/auth.py:96-119` | XS |
+| 7 | 🟢 | Per-minute public share Redis cache keyed by token | `backend/app/api/v1/share.py` | S |
+
+## References
+- `backend/app/api/v1/share.py`
+- `backend/app/api/v1/auth.py`
+- `frontend/src/hooks/usePortfolio.ts`
+- `analysis/archive_2026-04-06/02_performance.md`
