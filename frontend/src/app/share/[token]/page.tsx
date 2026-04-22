@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { SharedPortfolioView } from "@/lib/types";
 import FollowButton from "@/components/FollowButton";
+import ShareViewTracker from "@/components/ShareViewTracker";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -71,6 +72,7 @@ export default async function SharePage({
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
+      <ShareViewTracker token={token} />
       {/* Header */}
       <header className="border-b border-gray-800 px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
