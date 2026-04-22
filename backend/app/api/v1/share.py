@@ -230,9 +230,12 @@ async def public_share_view(
             total_usd=ex.total_usd if link.show_total_value else None,
         ))
 
+    # Use link label if set, otherwise return generic name to protect profile privacy
+    public_display_name = link.label or "Crypto Portfolio"
+
     return SharedPortfolioView(
         token=token,
-        profile_name=profile.name,
+        profile_name=public_display_name,
         total_usd=portfolio.total_usd if link.show_total_value else None,
         exchanges=filtered_exchanges,
         show_total_value=link.show_total_value,
