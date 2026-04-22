@@ -25,18 +25,12 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = "openid email profile"
 
-# In-memory store for OAuth state tokens (short-lived, CSRF protection)
-_oauth_states: dict[str, float] = {}
 _STATE_TTL_SECONDS = 600  # 10 minutes
+_OAUTH_STATE_PREFIX = "oauth_state:"
 
 
-def _cleanup_expired_states() -> None:
-    """Remove expired state tokens."""
-    import time
-    now = time.time()
-    expired = [k for k, v in _oauth_states.items() if now - v > _STATE_TTL_SECONDS]
-    for k in expired:
-        _oauth_states.pop(k, None)
+def _state_key(state: str) -> str:
+    return f"{_OAUTH_STATE_PREFIX}{state}"
 
 
 def _redirect_uri(request: Request) -> str:
@@ -51,12 +45,10 @@ def _redirect_uri(request: Request) -> str:
 @router.get("/google")
 async def google_login(request: Request):
     """Redirect user to Google OAuth consent screen."""
-    import time
-
-    _cleanup_expired_states()
+    redis = request.app.state.redis
 
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = time.time()
+    await redis.set(_state_key(state), "1", ex=_STATE_TTL_SECONDS)
 
     redirect_uri = _redirect_uri(request)
     params = (
@@ -83,12 +75,13 @@ async def google_callback(
     if error or not code:
         raise HTTPException(status_code=401, detail=f"OAuth error: {error or 'missing code'}")
 
-    # Validate CSRF state parameter
-    import time
-    if not state or state not in _oauth_states:
+    # Validate CSRF state parameter — use Redis for multi-replica safety
+    if not state:
         raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
-    if time.time() - _oauth_states.pop(state) > _STATE_TTL_SECONDS:
-        raise HTTPException(status_code=403, detail="OAuth state expired, please try again")
+    redis = request.app.state.redis
+    deleted = await redis.delete(_state_key(state))
+    if not deleted:
+        raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
 
     redirect_uri = _redirect_uri(request)
 
