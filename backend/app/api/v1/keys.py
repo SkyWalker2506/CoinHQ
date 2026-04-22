@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.limits import check_exchange_limit
 from app.core.logging import logger
 from app.core.security import encrypt, get_current_user
 from app.exchanges.factory import SUPPORTED_EXCHANGES, get_adapter
@@ -52,6 +53,17 @@ async def add_key(
     current_user: User = Depends(get_current_user),
 ):
     await _get_owned_profile(profile_id, db, current_user)
+
+    # Enforce tier-based exchange key limit
+    existing_keys_result = await db.execute(
+        select(ExchangeKey).where(ExchangeKey.profile_id == profile_id)
+    )
+    existing_count = len(existing_keys_result.scalars().all())
+    if not check_exchange_limit(current_user, existing_count):
+        raise HTTPException(
+            status_code=403,
+            detail="tier_limit: You have reached the exchange key limit for your current plan. Upgrade to Premium for unlimited keys.",
+        )
 
     if payload.exchange.lower() not in SUPPORTED_EXCHANGES:
         raise HTTPException(
