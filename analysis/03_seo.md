@@ -1,71 +1,70 @@
-## #3 SEO & Discoverability Analiz Raporu
-> Lead: GrowthLead (A11) | Model: Sonnet 4.6
+# SEO Analysis — CoinHQ
+_Date: 2026-04-10 · Lead: GrowthLead (A11) · Model: Sonnet 4.6_
 
----
+## Delta vs 2026-04-06
 
-### Bağlam Notu
+| Item | April 6 | April 10 | Status |
+|------|---------|----------|--------|
+| `robots.txt` | Yoktu | `public/robots.txt` eklendi | ✅ |
+| `sitemap.ts` | Yoktu | `app/sitemap.ts` eklendi | ⚠️ Partial |
+| OG tags in `layout.tsx` | Yoktu | `og:title`, `og:description`, `og:type` eklendi | ✅ |
+| Twitter Card | Yoktu | `summary` card eklendi | ✅ |
+| `generateMetadata()` share sayfasında | Yoktu | Profil adıyla dinamik metadata | ✅ |
+| Canonical URL | Yoktu | Hâlâ yok | 🔴 |
+| `og:image` share sayfasında | Yoktu | Hâlâ yok | 🔴 |
+| Landing page `/` | Yoktu | Hâlâ redirect → `/dashboard` | 🔴 |
+| `sitemap.ts` domain placeholder | — | `yourdomain.com` değiştirilmemiş | 🔴 |
+| Favicon | Yoktu | `favicon.ico` eklendi | ✅ |
 
-CoinHQ self-hosted, OAuth-gated bir uygulamadır. Dashboard, settings ve profil sayfaları giriş gerektirdiğinden geleneksel SEO kapsamının dışındadır. Bununla birlikte, iki alan SEO'dan doğrudan etkilenir:
+**Score: 2/10 → 5/10**
 
-1. **Share sayfası** (`/share/[token]`) — auth gerektirmez, herkese açık
-2. **Login/landing sayfası** — indexlenebilir, marka bilinirliği oluşturabilir
+## Current State
 
----
+`frontend/src/app/layout.tsx:9–25` — Global metadata artık `og:title`, `og:description`, `og:type: "website"`, `twitter:card: "summary"` içeriyor.
 
-### Mevcut Durum
+`frontend/src/app/share/[token]/page.tsx:7–27` — `generateMetadata()` implement edilmiş, `profile_name` ile dinamik title/description üretiyor, `og:title`/`og:description` ekliyor. Fallback da var.
 
-**Yapılmış olanlar:**
-- `layout.tsx` içinde temel `<title>` ve `description` metadata tanımlanmış
-- Share sayfası (`/share/[token]`) public ve server-side rendered (SSR) — bu SEO açısından sağlam bir temel
-- Share sayfasına "CoinHQ" marka etiketi eklenmiş (footer ve header)
-- `lang="en"` attribute `<html>` etiketinde mevcut
+`frontend/public/robots.txt` — `/share/` allow, `/dashboard` `/settings` `/api/` disallow. Doğru yapılandırılmış.
 
-**Puan: 2/10**
+`frontend/src/app/sitemap.ts` — Mevcut fakat içeriği eksik (sadece root, `yourdomain.com` placeholder).
 
-Temel metadata var ancak Open Graph, Twitter Card, robots.txt, sitemap.xml, canonical URL, yapısal veri (JSON-LD) gibi tüm SEO standartları eksik.
+## Findings
 
----
+### 🔴 Critical
 
-### Kritik Eksikler (hemen yapılmalı)
+**F1 — `sitemap.ts:6` → `yourdomain.com` placeholder**
+`robots.txt` bu sitemap URL'ini gösteriyor. Gerçek deploy'da search engine yanlış domain'e yönleniyor. Fix: `process.env.NEXT_PUBLIC_APP_URL` kullan.
 
-| # | Sorun | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | `robots.txt` yok | High | `public/robots.txt` oluştur; `/share/*` crawl'a izin ver, `/dashboard`, `/settings`, `/api/*` disallow et | S |
-| 2 | Open Graph metadata yok | High | `layout.tsx` ve `share/[token]/page.tsx`'e `og:title`, `og:description`, `og:image`, `og:url` ekle | S |
-| 3 | `sitemap.xml` yok | Med | Next.js `app/sitemap.ts` ile otomatik oluştur; `/share/*` hariç statik sayfaları dahil et | S |
-| 4 | Share sayfasında dinamik metadata yok | High | Share page'e `generateMetadata()` ekle — token verisine göre dinamik `og:title` (ör. "Portfolio — CoinHQ") | M |
-| 5 | Twitter Card meta etiketleri yok | Med | `twitter:card`, `twitter:title`, `twitter:description` ekle | S |
+**F2 — Share sayfasında canonical URL yok**
+`app/share/[token]/page.tsx:14` — `generateMetadata()` içinde `alternates: { canonical }` eksik. Birden fazla token aynı portföyü paylaşırsa duplicate content riski.
 
----
+**F3 — `og:image` / `twitter:image` yok**
+`app/share/[token]/page.tsx:17–20` — OpenGraph bloğunda resim yok. Twitter/Discord/Telegram'da önizleme boş gelecek → CTR düşük. En hızlı fix: `/public/og-default.png` (1200×630) + `layout.tsx`'e ekle.
 
-### İyileştirme Önerileri (planlı)
+**F4 — `/` root hâlâ `/dashboard`'a redirect**
+`app/page.tsx:3` — Giriş yapmamış kullanıcı ve Google botu redirect alıyor. Hiç crawlable landing page yok. Pricing page (`/pricing`) var ama `/` → `/pricing`/`/login` gibi bir yönlendirme bile yok.
 
-| # | Öneri | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Share sayfasına canonical URL ekle | Med | Her token için `<link rel="canonical">` — duplicate content riskini engeller | S |
-| 2 | JSON-LD yapısal veri (WebSite schema) | Low | Ana layout'a `WebSite` schema ekle — Google Knowledge Panel için zemin hazırlar | S |
-| 3 | `viewport` meta etiketini açıkça tanımla | Low | Next.js metadata API ile `viewport` export et — mobile-first index için | S |
-| 4 | Favicon ve maskable icon ekle | Med | `public/favicon.ico`, `public/apple-touch-icon.png` — PWA ve bookmark görünümü | M |
-| 5 | Landing / marketing sayfası oluştur | High | OAuth ile korunan app'ın önüne SEO-friendly bir tanıtım sayfası koy (`/`) | L |
+### 🟡 Medium
 
----
+**F5 — `/pricing` ve `/login` sitemap'te yok** — `app/sitemap.ts` sadece root içeriyor.
 
-### Kesin Olmalı (industry standard)
-- `robots.txt` — tüm self-hosted uygulamalarda zorunlu
-- Open Graph meta etiketleri — sosyal paylaşım önizlemesi
-- `sitemap.xml` — crawler discovery
-- `lang` attribute — mevcut, devam etmeli
+**F6 — `og:url` eksik** — Share page OG bloğunda `url` field'ı yok, sosyal share attribution yanlış olabilir.
 
-### Kesin Değişmeli (mevcut sorunlar)
-- `page.tsx` (root) doğrudan `/dashboard`'a yönlendiriyor — crawlanabilir landing sayfası yok
-- Share sayfasında `generateMetadata()` eksik — her share linki aynı title/description gösteriyor
-- `public/` klasörü hiç yok — statik asset servisi yapılamıyor
+**F7 — `twitter:card: "summary"` değil `"summary_large_image"` olmalı** — `layout.tsx:19`. Resim eklenince bunu da değiştir.
 
-### Nice-to-Have (diferansiasyon)
-- Share linki paylaşılınca Twitter/LinkedIn önizlemesi için OG image (dinamik, `og:image` ile)
-- `hreflang` — ileride çok dil desteği gelirse
-- Structured data: `SoftwareApplication` schema için Google Play / app store alternatifi
+### 🟢 Good
 
----
+**F8** — Share page'de `next: { revalidate: 60 }` doğru; hem `generateMetadata` hem `fetchShare` için uygulanmış (`page.tsx:11,31`).
 
-> **Not:** Bu proje MVP aşamasında. SEO yatırımının en yüksek ROI'u share sayfasından gelir — çünkü share linkleri dışarıya paylaşılıyor ve organik backlink/trafik üretebilir.
+## Action Items
+
+| # | P | Fix | File | Effort |
+|---|---|-----|------|--------|
+| 1 | 🔴 | `yourdomain.com` → `NEXT_PUBLIC_APP_URL` | `app/sitemap.ts:6` | XS |
+| 2 | 🔴 | `/pricing`, `/login` sitemap'e ekle | `app/sitemap.ts` | XS |
+| 3 | 🔴 | Share page canonical URL | `app/share/[token]/page.tsx` | XS |
+| 4 | 🔴 | Static `og:image` fallback (1200×630) | `public/og-default.png` + `layout.tsx` | S |
+| 5 | 🔴 | `og:url` share page OG bloğuna ekle | `app/share/[token]/page.tsx:17` | XS |
+| 6 | 🟡 | Twitter card → `summary_large_image` | `app/layout.tsx:19` | XS |
+| 7 | 🟡 | Landing page at `/` | `app/page.tsx` | M |
+| 8 | 🟢 | JSON-LD `SoftwareApplication` schema | pricing/landing page | S |

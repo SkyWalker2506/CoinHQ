@@ -1,75 +1,76 @@
-## #6 Growth & User Engagement Analiz Raporu
-> Lead: GrowthLead (A11) | Model: Sonnet 4.6
+# Growth & Engagement Analysis — CoinHQ
+_Date: 2026-04-10 · Lead: GrowthLead (A11) · Model: Sonnet 4.6_
 
----
+## Delta vs 2026-04-06
 
-### Bağlam Notu
+| Item | April 6 | April 10 | Status |
+|------|---------|----------|--------|
+| Onboarding wizard | Yoktu | `OnboardingWizard.tsx` implement edilmiş | ✅ |
+| Share page CTA "Start with CoinHQ" | Yoktu | Footer'da CTA + "Powered by CoinHQ" var | ✅ |
+| Share link view_count | Yoktu | Backend + frontend gösterimi var | ✅ |
+| Empty state | Yoktu | `EmptyState.tsx` component mevcut | ✅ |
+| Tier upgrade prompt | Yoktu | `UpgradeBanner.tsx` + settings page entegrasyon | ✅ |
+| Social share buttons after copy | Yoktu | Hâlâ yok | 🔴 |
+| Onboarding completion tracking | — | Yok (localStorage flag, event yok) | 🟡 |
+| Referral / invite mechanism | Yoktu | Hâlâ yok | 🟡 |
+| Email retention | Yoktu | Hâlâ yok | 🟡 |
 
-CoinHQ şu anda MVP/Phase 1 aşamasında. Hedef kitle: kendi portföyünü takip etmek isteyen kripto kullanıcıları ve bu verileri danışmanlarıyla paylaşmak isteyenler. Büyüme motoru organik viral loop (share link) üzerine kurulu — bu doğru bir seçim.
+**Score: 3/10 → 6/10**
 
----
+## Current State
 
-### Mevcut Durum
+**Onboarding:** `frontend/src/components/OnboardingWizard.tsx` — 3 adımlı modal wizard implement edilmiş (profil → exchange → share). `localStorage['onboarding_done']` ile tekrar gösterilmiyor. "Skip setup" butonu mevcut.
 
-**Yapılmış olanlar:**
-- Share link özelliği implemente edilmiş — temel viral loop mevcut
-- Share linkinde CoinHQ markalanması var (header + footer)
-- Granüler izin sistemi (show_total_value, show_coin_amounts, vb.) — kullanıcıya kontrol hissi veriyor
-- Label sistemi ("Muhasebeci", "Ortak") — use-case odaklı, kullanıcı segmentasyonuna uygun
-- Link süresi (expiry) ve iptal özelliği — güven artırıcı
+**Share page viral CTA:** `frontend/src/app/share/[token]/page.tsx:164–170` — Footer'da "Track your own crypto portfolio" + mavi "Start with CoinHQ — Free" butonu + "Powered by CoinHQ" var. Bu April 6'daki en kritik eksikti, çözülmüş.
 
-**Eksik olanlar:**
-- Onboarding akışı yok
-- Kullanıcı aktivasyon metrikleri yok
-- Referral/davet mekanizması yok
-- Geri dönüşü teşvik eden retention mekanizması yok (push, email, bildirim — Phase 3'te planlanmış)
+**Upgrade prompt:** `frontend/src/components/UpgradeBanner.tsx` — 403 tier-limit hatası gelince settings sayfasında (`settings/page.tsx:88–90`) gösterilen amber renkli banner. `/pricing`'e link veriyor.
 
-**Puan: 3/10**
+**View count gösterimi:** `frontend/src/components/ShareLinkManager.tsx:162–166` — `{link.view_count} views` ve `Last: {date}` gösteriliyor. Kullanıcı danışmanının linki kaç kez açtığını görüyor.
 
-Share link altyapısı viral loop için doğru temel, ancak growth mekanizmaları henüz devreye alınmamış.
+## Findings
 
----
+### 🔴 Critical
 
-### Kritik Eksikler (hemen yapılmalı)
+**F1 — Onboarding wizard'da completion/skip analytics yok**
+`OnboardingWizard.tsx:13–16` — `handleComplete()` sadece `localStorage.setItem` yapıyor; `events.profileCreated()` veya benzeri event yok. Kaç kullanıcının onboarding'i tamamladığı vs skip ettiği bilinmiyor. Activation rate ölçülemez. Fix: `trackEvent('Onboarding Completed', { step: step + 1 })` ve `trackEvent('Onboarding Skipped', { step })` ekle.
 
-| # | Sorun | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Onboarding akışı yok | High | İlk girişte 3 adımlı wizard: profil oluştur → exchange ekle → share link al | M |
-| 2 | Share linkinde "CoinHQ ile sen de takip et" CTA yok | High | Share sayfası footer'ına kayıt linki ekle — en güçlü viral giriş noktası | S |
-| 3 | Boş durum (empty state) tasarımı yok | Med | Dashboard'da exchange eklenmemişse yönlendirici empty state — "Add your first exchange to get started" | S |
-| 4 | Share linki oluşturma sonrası paylaşım CTA yok | Med | Link kopyalandıktan sonra Twitter/WhatsApp paylaşım butonları ekle | S |
+**F2 — Share link kopyalandıktan sonra social share butonu yok**
+`ShareLinkManager.tsx:59–76` — Kopyalama sonrası sadece "Copied!" feedback'i var; Twitter/Telegram/WhatsApp paylaşım seçeneği yok. Share link viral loop'un en kritik noktası bu. Fix: kopyalama sonrası küçük bir modal veya inline buton grubu: "Share on Twitter", "Copy link".
 
----
+**F3 — Upgrade prompt sadece settings sayfasında, tek temas noktası**
+`frontend/src/app/settings/page.tsx:88–90` — `UpgradeBanner` sadece 403 hatası gelince settings sayfasında gösteriliyor. Dashboard'da (limit yaklaşırken), onboarding sonu (kullanıcı motivasyonu yüksekken), share link oluşturma ekranında (premium özellik açıkken) hiç gösterilmiyor. Conversion surface çok dar.
 
-### İyileştirme Önerileri (planlı)
+### 🟡 Medium
 
-| # | Öneri | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Share linkine "Powered by CoinHQ" branding + kayıt linki | High | Footer veya küçük badge — her share linki bir growth loop kapısı | S |
-| 2 | Share link görüntülenme sayısı (view count) | Med | Backend'de hit counter; kullanıcıya "Danışmanın linki 5 kez açtı" bilgisi | M |
-| 3 | Profil bazlı "son güncelleme" göstergesi | Med | Dashboard'da her profil için son senkron zamanı — aktif hissettirme | S |
-| 4 | Aggregate dashboard'da portfolio trend grafiği | High | Phase 3 içeriği ama engagement için önemli — kullanıcıyı her gün geri getirir | L |
-| 5 | Share link şablonları | Low | "Danışman şablonu", "Vergi şablonu" — hazır izin setleri, friction azaltır | M |
-| 6 | Exchange bağlantı sağlığı göstergesi | Med | API key hata veriyorsa dashboard'da uyarı — session'ı sonlandırır, kullanıcıyı tutar | M |
+**F4 — Pricing page'de waitlist formu çalışmıyor**
+`frontend/src/app/pricing/page.tsx:10` — Premium plan CTA'sı `href="#waitlist"` gösteriyor ama `id="waitlist"` olan bir element yok. Kullanıcı tıklayınca hiçbir şey olmuyor. Lead capture fırsatı kaçıyor.
 
----
+**F5 — Share link oluşturma sonrası modal UX'i zayıf**
+`CreateShareLinkModal.tsx` — Modal kapatılınca link kayboluyor. "Share on Twitter/Telegram" gibi one-click paylaşım seçenekleri yok. Link oluşturulduktan hemen sonra kullanıcı motivasyonu en yüksek noktada — bu momentum kullanılmıyor.
 
-### Kesin Olmalı (industry standard)
-- Onboarding sihirbazı — ilk kullanıcı deneyimi (ilk 5 dakika = retention belirleyicisi)
-- Empty state tasarımı — boş sayfa bırakma, yönlendir
-- Share linkinde ürün markalanması + kayıt CTA'sı
+**F6 — `FollowButton` component'i — feature tamamlanmamış**
+`share/[token]/page.tsx:79` — `data.allow_follow && <FollowButton />` var, `FollowButton.tsx` mevcut. Ama "follow" ne anlama geliyor, kullanıcıya bildirim geliyor mu? UX tamamlanmamış görünüyor.
 
-### Kesin Değişmeli (mevcut sorunlar)
-- Root `page.tsx` direkt `/dashboard`'a yönlendiriyor — giriş yapmamış kullanıcıya login sayfası yerine hata
-- Share sayfasında "Bu nedir?" açıklaması yok — ziyaretçi bağlam alamıyor
-- Dashboard'da profil yoksa kullanıcı ne yapacağını bilmiyor
+**F7 — Onboarding wizard triggerlama koşulu belirsiz**
+`OnboardingWizard.tsx` — Wizard'ın ne zaman tetiklendiği bu dosyada değil; parent component'te (`dashboard/page.tsx` gibi). `localStorage` check ile ilk giriş tespiti MVP için yeterli ama server-side onboarding state daha güvenilir.
 
-### Nice-to-Have (diferansiasyon)
-- Portfolio snapshot e-postası (haftalık özet) — Phase 3
-- Danışman/ortak davet akışı — Phase 2'deki delegated access özelliğiyle entegre
-- Kripto topluluklarında (Reddit, Twitter) paylaşım için "portfolio card" OG image üretimi
-- Milestone bildirimleri: "Portföyünüz $10K'yı geçti!" — Phase 3
+### 🟢 Good
 
----
+**F8 — Share page viral footer doğru konumlandırılmış**
+`share/[token]/page.tsx:164–170` — Footer'daki CTA, görünürlük hiyerarşisi açısından doğru yerde (portfolio görüldükten sonra). Mavi buton rengi dikkat çekici.
 
-> **Viral Loop Potansiyeli:** Share link özelliği çok güçlü bir büyüme motoru. Danışmanlar, muhasebeciler ve ortaklar bu link aracılığıyla ürüne maruz kalıyor. "CoinHQ ile paylaşıldı" → CTA → kayıt döngüsü henüz kurulmamış; bu en yüksek öncelikli growth aksiyonu.
+**F9 — View count kullanıcıya değer hissettiriyor**
+`ShareLinkManager.tsx:162` — "5 views · Last: Apr 8" gibi bilgi, kullanıcının ürüne geri dönmesini teşvik ediyor. Retention hook olarak iyi çalışır.
+
+## Action Items
+
+| # | P | Fix | File | Effort |
+|---|---|-----|------|--------|
+| 1 | 🔴 | Onboarding analytics ekle (complete/skip events) | `OnboardingWizard.tsx:13,29` | XS |
+| 2 | 🔴 | Share sonrası social share butonları | `ShareLinkManager.tsx` | S |
+| 3 | 🔴 | Upgrade prompt → dashboard + share creation | `dashboard/page.tsx`, `CreateShareLinkModal.tsx` | S |
+| 4 | 🟡 | Pricing page waitlist form implement et | `pricing/page.tsx` | M |
+| 5 | 🟡 | Share link modal'a Twitter/Telegram paylaşım ekle | `CreateShareLinkModal.tsx` | S |
+| 6 | 🟡 | Upgrade event tracking (impression + click) | `UpgradeBanner.tsx` | XS |
+| 7 | 🟢 | `FollowButton` feature'ı tamamla veya gizle | `FollowButton.tsx` | M |
+| 8 | 🟢 | Onboarding server-side state (DB flag) | backend + dashboard | M |

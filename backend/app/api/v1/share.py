@@ -221,13 +221,13 @@ async def public_share_view(
             assets.append(SharedAsset(
                 asset=bal.asset,
                 amount=bal.total if link.show_coin_amounts else None,
-                usd_value=bal.usd_value,
+                usd_value=bal.usd_value if link.show_total_value else None,
                 allocation_pct=alloc_pct,
             ))
         filtered_exchanges.append(SharedExchange(
             exchange_name=exchange_label,
             assets=assets,
-            total_usd=ex.total_usd,
+            total_usd=ex.total_usd if link.show_total_value else None,
         ))
 
     return SharedPortfolioView(
