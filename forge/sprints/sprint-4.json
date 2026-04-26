@@ -1,0 +1,62 @@
+{
+  "sprint": 4,
+  "run": 4,
+  "epic": "Run 4 — Lessons-fed hardening: key rotation wired, OAuth expiry tested, frontend test infra fixed, waitlist CTA",
+  "tasks": [
+    {
+      "id": "T-007",
+      "title": "Wire get_multi_fernet() for envelope encryption with ENCRYPTION_KEYS env, fallback to single ENCRYPTION_KEY",
+      "priority": "P1",
+      "sp": 5,
+      "status": "done",
+      "wave": 1,
+      "depends_on": [],
+      "files": ["backend/app/core/security.py", "backend/app/core/config.py", "backend/tests/test_security.py", ".env.example"],
+      "verify": "cd backend && uv run pytest tests/test_security.py -q",
+      "pr": "https://github.com/SkyWalker2506/CoinHQ/pull/34",
+      "completed_at": "2026-04-26T10:01:00Z"
+    },
+    {
+      "id": "T-008",
+      "title": "Add OAuth expired-state integration test (Redis returns 0 → 403)",
+      "priority": "P1",
+      "sp": 2,
+      "status": "done",
+      "wave": 1,
+      "depends_on": [],
+      "files": ["backend/tests/test_auth.py"],
+      "verify": "cd backend && uv run pytest tests/test_auth.py -q",
+      "pr": "https://github.com/SkyWalker2506/CoinHQ/pull/35",
+      "completed_at": "2026-04-26T10:02:00Z"
+    },
+    {
+      "id": "T-009",
+      "title": "Fix navigation.test.tsx by adding localStorage mock to vitest setup",
+      "priority": "P1",
+      "sp": 2,
+      "status": "done",
+      "wave": 1,
+      "depends_on": [],
+      "files": ["frontend/src/__tests__/setup.ts"],
+      "verify": "cd frontend && pnpm test -- --run __tests__/navigation.test.tsx",
+      "pr": "https://github.com/SkyWalker2506/CoinHQ/pull/36",
+      "completed_at": "2026-04-26T10:03:00Z",
+      "note": "Bug did not reproduce on current jsdom 29 / vitest 4 (17/17 already passing). PR codifies the fix as a defensive Storage shim + cross-test cleanup so future env regressions cannot reintroduce the failure."
+    },
+    {
+      "id": "T-010",
+      "title": "Wire pricing page 'Join waitlist' CTA to a real email capture form",
+      "priority": "P2",
+      "sp": 3,
+      "status": "done",
+      "wave": 1,
+      "depends_on": [],
+      "files": ["frontend/src/app/pricing/page.tsx", "frontend/src/components/WaitlistForm.tsx", "frontend/src/lib/analytics.ts", "frontend/src/__tests__/waitlistform.test.tsx"],
+      "verify": "cd frontend && pnpm lint && pnpm exec vitest run",
+      "pr": "https://github.com/SkyWalker2506/CoinHQ/pull/37",
+      "completed_at": "2026-04-26T10:05:00Z"
+    }
+  ],
+  "started_at": "2026-04-26T10:00:00Z",
+  "completed_at": "2026-04-26T10:05:00Z"
+}
