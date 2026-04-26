@@ -14,7 +14,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # Security
-    ENCRYPTION_KEY: str  # Fernet key — required
+    ENCRYPTION_KEY: str  # Fernet key — required (used as primary if ENCRYPTION_KEYS unset)
+    # Optional CSV of additional past Fernet keys for rotation. The first non-empty
+    # entry in the merged list (ENCRYPTION_KEY first, then ENCRYPTION_KEYS) is used
+    # to encrypt new ciphertexts; all entries are tried for decryption.
+    # Example: ENCRYPTION_KEYS="oldkey1=,oldkey2="
+    ENCRYPTION_KEYS: str = ""
 
     # JWT
     JWT_SECRET: str  # required
