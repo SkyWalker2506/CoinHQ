@@ -79,6 +79,92 @@ class TestGoogleCallback:
         assert "CSRF" in exc.value.detail
 
 
+class _StatefulRedisStub:
+    """Minimal stateful Redis stub — supports set(ex=...), delete(), and a
+    `_expire(key)` helper that simulates TTL expiry so we can exercise the
+    real callback path against a simulated time-to-live event.
+    """
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        # ex is recorded but not enforced — call _expire() to simulate TTL elapse
+        self.store[key] = value
+        return True
+
+    async def delete(self, key: str) -> int:
+        return 1 if self.store.pop(key, None) is not None else 0
+
+    def _expire(self, key: str) -> None:
+        """Test helper: simulate the TTL elapsing (key vanishes from Redis)."""
+        self.store.pop(key, None)
+
+
+class TestOAuthStateLifecycle:
+    """Integration coverage for the OAuth state lifecycle:
+    set with TTL → consume on callback → reject expired/replayed state.
+    """
+
+    @pytest.mark.asyncio
+    async def test_expired_state_returns_403(self):
+        """When Redis state TTL has elapsed, callback must return 403 even
+        though the state value was originally legitimate."""
+        from app.api.v1.auth import _state_key, google_login
+
+        redis = _StatefulRedisStub()
+        # Step 1: simulate /google → state stored with TTL
+        login_request = _make_request_with_redis(redis)
+        login_request.base_url = "http://test/"
+        await google_login(request=login_request)
+        assert len(redis.store) == 1
+        state = next(iter(redis.store)).removeprefix("oauth_state:")
+        assert state and len(state) >= 20  # token_urlsafe(32) ≥ 32 chars
+
+        # Step 2: simulate TTL elapse (10-min window expired before user returned)
+        redis._expire(_state_key(state))
+        assert _state_key(state) not in redis.store
+
+        # Step 3: callback with the now-expired state → 403
+        callback_request = _make_request_with_redis(redis)
+        with pytest.raises(HTTPException) as exc:
+            await google_callback(
+                request=callback_request,
+                code="authcode-after-expiry",
+                error=None,
+                state=state,
+                db=AsyncMock(),
+            )
+        assert exc.value.status_code == 403
+        assert "CSRF" in exc.value.detail
+
+    @pytest.mark.asyncio
+    async def test_state_is_single_use(self):
+        """A valid state is atomically consumed: replay must 403."""
+        from app.api.v1.auth import _state_key, google_login
+
+        redis = _StatefulRedisStub()
+        login_request = _make_request_with_redis(redis)
+        login_request.base_url = "http://test/"
+        await google_login(request=login_request)
+        state = next(iter(redis.store)).removeprefix("oauth_state:")
+
+        # Manually consume the state (mimic a successful first callback)
+        consumed = await redis.delete(_state_key(state))
+        assert consumed == 1
+
+        # Replay attempt → state already gone → 403
+        with pytest.raises(HTTPException) as exc:
+            await google_callback(
+                request=_make_request_with_redis(redis),
+                code="replay-code",
+                error=None,
+                state=state,
+                db=AsyncMock(),
+            )
+        assert exc.value.status_code == 403
+
+
 class TestRefreshAccessToken:
     @pytest.mark.asyncio
     async def test_valid_refresh_token_returns_new_access_token(self):
