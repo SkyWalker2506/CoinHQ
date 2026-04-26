@@ -34,6 +34,7 @@ from app.core.security import (
     encrypt,
     get_current_user,
     get_multi_fernet,
+    reset_fernet_cache,
 )
 
 # ── Encryption ────────────────────────────────────────────────────────────────
@@ -72,6 +73,54 @@ class TestEncryption:
 
         new_ciphertext = multi.encrypt(b"new-secret").decode()
         assert multi.decrypt(new_ciphertext.encode()) == b"new-secret"
+
+    def test_get_multi_fernet_rejects_empty_list(self):
+        with pytest.raises(ValueError):
+            get_multi_fernet([])
+
+    def test_encrypt_decrypt_supports_rotation_via_settings(self):
+        """End-to-end rotation: encrypt with old key, rotate config, decrypt still works."""
+        from cryptography.fernet import Fernet
+
+        old_key = Fernet.generate_key().decode()
+        new_key = Fernet.generate_key().decode()
+
+        # Step 1: configure only old key, encrypt a secret
+        settings.ENCRYPTION_KEY = old_key
+        settings.ENCRYPTION_KEYS = ""
+        reset_fernet_cache()
+        ct = encrypt("rotation-payload")
+
+        # Step 2: rotate — new key becomes primary, old key kept for decrypt
+        settings.ENCRYPTION_KEY = new_key
+        settings.ENCRYPTION_KEYS = old_key
+        reset_fernet_cache()
+
+        # Old ciphertext still decrypts (via fallback key)
+        assert decrypt(ct) == "rotation-payload"
+
+        # New encryptions use the new primary key
+        new_ct = encrypt("post-rotation")
+        assert decrypt(new_ct) == "post-rotation"
+
+        # Cleanup: restore test key for downstream tests
+        settings.ENCRYPTION_KEY = _TEST_FERNET_KEY
+        settings.ENCRYPTION_KEYS = ""
+        reset_fernet_cache()
+
+    def test_encryption_keys_csv_skips_blank_entries(self):
+        """Whitespace and empty CSV entries must not raise."""
+        from cryptography.fernet import Fernet
+
+        extra_key = Fernet.generate_key().decode()
+        settings.ENCRYPTION_KEYS = f" , {extra_key} , "
+        reset_fernet_cache()
+        try:
+            ct = encrypt("blank-csv-test")
+            assert decrypt(ct) == "blank-csv-test"
+        finally:
+            settings.ENCRYPTION_KEYS = ""
+            reset_fernet_cache()
 
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
