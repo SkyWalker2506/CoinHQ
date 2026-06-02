@@ -5,6 +5,7 @@ import os
 os.environ.setdefault("ENCRYPTION_KEY", "dGVzdC1lbmNyeXB0aW9uLWtleS0zMi1ieXRlc3h4")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-for-unit-tests-only")
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -179,6 +180,113 @@ def _db_with_trade_key(key):
     return db
 
 
+class TestOtherExchangeTrading:
+    def _post_client(self, payload):
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value=payload)
+        client = AsyncMock()
+        client.post = AsyncMock(return_value=resp)
+        return client
+
+    @pytest.mark.asyncio
+    async def test_bybit_place_order_uses_quote_market_unit(self):
+        from app.exchanges.bybit import BybitAdapter
+
+        client = self._post_client({"retCode": 0, "result": {"orderId": "x"}})
+        adapter = BybitAdapter("key123456", "secret123", http_client=client)
+        await adapter.place_order("btc", "buy", 100.0)
+
+        body = json.loads(client.post.call_args.kwargs["content"])
+        assert body["category"] == "spot"
+        assert body["symbol"] == "BTCUSDT"
+        assert body["side"] == "Buy"
+        assert body["orderType"] == "Market"
+        assert body["marketUnit"] == "quoteCoin"
+        assert body["qty"] == "100.0"
+
+    @pytest.mark.asyncio
+    async def test_bybit_validate_trade_key_rejects_withdrawal(self):
+        from app.exchanges.bybit import BybitAdapter
+
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={"result": {"readOnly": "0", "permissions": {"Withdraw": ["x"]}}})
+        client = AsyncMock()
+        client.get = AsyncMock(return_value=resp)
+        adapter = BybitAdapter("key123456", "secret123", http_client=client)
+        with pytest.raises(ValueError, match="withdraw"):
+            await adapter.validate_trade_key()
+
+    @pytest.mark.asyncio
+    async def test_okx_place_order_quote_ccy_market(self):
+        from app.exchanges.okx import OKXAdapter
+
+        client = self._post_client({"code": "0", "data": [{"ordId": "1"}]})
+        adapter = OKXAdapter("key123456", "secret123", http_client=client)
+        await adapter.place_order("eth", "sell", 250.0)
+
+        body = json.loads(client.post.call_args.kwargs["content"])
+        assert body["instId"] == "ETH-USDT"
+        assert body["ordType"] == "market"
+        assert body["side"] == "sell"
+        assert body["tgtCcy"] == "quote_ccy"
+
+    @pytest.mark.asyncio
+    async def test_okx_validate_trade_key_rejects_withdrawal(self):
+        from app.exchanges.okx import OKXAdapter
+
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={"data": [{"perm": "read_only,trade,withdraw"}]})
+        client = AsyncMock()
+        client.get = AsyncMock(return_value=resp)
+        adapter = OKXAdapter("key123456", "secret123", http_client=client)
+        with pytest.raises(ValueError, match="withdraw"):
+            await adapter.validate_trade_key()
+
+    @pytest.mark.asyncio
+    async def test_gateio_place_order_buy_uses_quote_amount(self):
+        from app.exchanges.gateio import GateioAdapter
+
+        client = self._post_client({"id": "1", "status": "closed"})
+        adapter = GateioAdapter("key123456", "secret123", http_client=client)
+        await adapter.place_order("btc", "buy", 100.0)
+
+        body = json.loads(client.post.call_args.kwargs["content"])
+        assert body["currency_pair"] == "BTC_USDT"
+        assert body["type"] == "market"
+        assert body["side"] == "buy"
+        assert body["amount"] == "100.0"
+
+    @pytest.mark.asyncio
+    async def test_gateio_place_order_sell_uses_base_qty_from_price(self):
+        from app.exchanges.gateio import GateioAdapter
+
+        client = self._post_client({"id": "1"})
+        adapter = GateioAdapter("key123456", "secret123", http_client=client)
+        await adapter.place_order("btc", "sell", 100.0, price=50000.0)
+
+        body = json.loads(client.post.call_args.kwargs["content"])
+        assert body["side"] == "sell"
+        assert body["amount"] == "0.002"  # 100 / 50000
+
+    @pytest.mark.asyncio
+    async def test_kraken_place_order_requires_price(self):
+        from app.exchanges.kraken import KrakenAdapter
+
+        adapter = KrakenAdapter("key123456", "c2VjcmV0", http_client=AsyncMock())
+        with pytest.raises(ValueError, match="price"):
+            await adapter.place_order("BTC", "sell", 100.0, price=None)
+
+    def test_factory_supports_gateio(self):
+        from app.exchanges.factory import SUPPORTED_EXCHANGES, get_adapter
+        from app.exchanges.gateio import GateioAdapter
+
+        assert "gateio" in SUPPORTED_EXCHANGES
+        assert isinstance(get_adapter("gateio", "k", "s"), GateioAdapter)
+
+
 class TestExecuteTrade:
     @pytest.mark.asyncio
     async def test_rejects_without_trade_key(self):
@@ -215,10 +323,11 @@ class TestExecuteTrade:
 
         with patch.object(trade_service, "get_adapter", return_value=adapter):
             with patch.object(trade_service, "decrypt", side_effect=lambda x: f"dec_{x}"):
-                order = await trade_service.execute_trade(
-                    db, profile=_make_profile(), exchange="binance", side="buy",
-                    base_asset="btc", usd_amount=100, actor="owner",
-                )
+                with patch.object(trade_service, "get_usd_prices", AsyncMock(return_value={"BTC": 50000.0})):
+                    order = await trade_service.execute_trade(
+                        db, profile=_make_profile(), exchange="binance", side="buy",
+                        base_asset="btc", usd_amount=100, actor="owner",
+                    )
         assert order.status == "filled"
         assert order.side == "buy"
         assert order.base_asset == "BTC"

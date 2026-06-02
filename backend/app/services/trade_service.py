@@ -21,6 +21,7 @@ from app.models.exchange_key import ExchangeKey
 from app.models.profile import Profile
 from app.models.share_link import ShareLink
 from app.models.trade_order import TradeOrder
+from app.services.price_service import get_usd_prices
 
 
 def _safe_float(value) -> float | None:
@@ -112,8 +113,17 @@ async def execute_trade(
         status="pending",
     )
 
+    # Best-effort USD price so adapters that size orders by base quantity (e.g.
+    # sells on Kraken/Coinbase/Gate.io) can convert the quote amount to base.
+    price: float | None = None
     try:
-        resp = await adapter.place_order(base_asset, side, usd_amount)
+        prices = await get_usd_prices([base_asset], http_client=http_client)
+        price = prices.get(base_asset)
+    except Exception:  # noqa: BLE001 — pricing is best-effort, never blocks here
+        price = None
+
+    try:
+        resp = await adapter.place_order(base_asset, side, usd_amount, price=price)
     except NotImplementedError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:

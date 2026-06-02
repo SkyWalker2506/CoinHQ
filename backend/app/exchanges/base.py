@@ -46,14 +46,29 @@ class ExchangeAdapter(ABC):
             f"Trading is not supported for {self.__class__.__name__} yet."
         )
 
-    async def place_order(self, base_asset: str, side: str, quote_quantity_usd: float) -> dict:
+    async def place_order(
+        self,
+        base_asset: str,
+        side: str,
+        quote_quantity_usd: float,
+        price: float | None = None,
+    ) -> dict:
         """Place a spot MARKET order for ~quote_quantity_usd of base_asset against USDT.
 
-        `side` is "buy" or "sell". Returns the raw exchange order response.
+        `side` is "buy" or "sell". `price` is the USD price of base_asset, supplied
+        by the caller so adapters whose API needs a base quantity (e.g. for sells)
+        can convert quote→base. Returns the raw exchange order response.
         """
         raise NotImplementedError(
             f"Trading is not supported for {self.__class__.__name__} yet."
         )
+
+    @staticmethod
+    def _base_qty(quote_quantity_usd: float, price: float | None) -> float:
+        """Convert a USD quote amount to a base-asset quantity using `price`."""
+        if not price or price <= 0:
+            raise ValueError("Could not determine the asset price to size this order.")
+        return round(quote_quantity_usd / price, 8)
 
     def _mask_key(self) -> str:
         """Return masked API key for logging."""

@@ -49,7 +49,7 @@ export interface AggregatePortfolioResponse {
   asset_totals: Record<string, number>;
 }
 
-export type SupportedExchange = "binance" | "bybit" | "okx" | "coinbase" | "kraken" | "binancetr";
+export type SupportedExchange = "binance" | "bybit" | "okx" | "coinbase" | "kraken" | "binancetr" | "gateio";
 
 export type TradeDirection = "both" | "buy" | "sell";
 

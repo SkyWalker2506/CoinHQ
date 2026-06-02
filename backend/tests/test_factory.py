@@ -50,4 +50,4 @@ class TestGetAdapter:
             get_adapter("unknown_exchange", "key", "secret")
 
     def test_supported_exchanges_list(self):
-        assert set(SUPPORTED_EXCHANGES) == {"binance", "bybit", "okx", "coinbase", "kraken", "binancetr"}
+        assert set(SUPPORTED_EXCHANGES) == {"binance", "bybit", "okx", "coinbase", "kraken", "binancetr", "gateio"}

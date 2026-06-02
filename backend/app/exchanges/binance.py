@@ -104,7 +104,9 @@ class BinanceAdapter(ExchangeAdapter):
 
         return True
 
-    async def place_order(self, base_asset: str, side: str, quote_quantity_usd: float) -> dict:
+    async def place_order(
+        self, base_asset: str, side: str, quote_quantity_usd: float, price: float | None = None
+    ) -> dict:
         """Place a spot MARKET order quoted in USDT (quoteOrderQty)."""
         side_u = side.upper()
         if side_u not in ("BUY", "SELL"):

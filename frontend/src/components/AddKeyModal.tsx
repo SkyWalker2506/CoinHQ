@@ -13,6 +13,7 @@ const EXCHANGES: { id: SupportedExchange; label: string }[] = [
   { id: "okx", label: "OKX" },
   { id: "coinbase", label: "Coinbase" },
   { id: "kraken", label: "Kraken" },
+  { id: "gateio", label: "Gate.io" },
 ];
 
 interface ExchangeInfo {
@@ -58,6 +59,12 @@ const EXCHANGE_INFO: Record<SupportedExchange, ExchangeInfo> = {
     appScheme: null,
     iosUrl: "https://apps.apple.com/app/kraken-buy-bitcoin-crypto/id1481947260",
     androidUrl: "https://play.google.com/store/apps/details?id=com.kraken.trade",
+  },
+  gateio: {
+    webUrl: "https://www.gate.io/myaccount/api_key_manage",
+    appScheme: null,
+    iosUrl: "https://apps.apple.com/app/gate-io-buy-bitcoin-crypto/id1294998195",
+    androidUrl: "https://play.google.com/store/apps/details?id=com.gateio.gateio",
   },
 };
 

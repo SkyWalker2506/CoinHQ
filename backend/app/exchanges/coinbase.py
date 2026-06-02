@@ -1,6 +1,8 @@
 import hashlib
 import hmac
+import json
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 import httpx
@@ -88,3 +90,39 @@ class CoinbaseAdapter(ExchangeAdapter):
         # Keys with trade/order scopes cannot be detected here — documented limitation.
         # Users must create view-only keys (portfolios:read, accounts:read).
         return True
+
+    async def validate_trade_key(self) -> bool:
+        """Coinbase does not expose permission flags, so we only verify the key works.
+        CoinHQ never calls any withdrawal endpoint; create a trade-only (no transfer)
+        key for safety."""
+        await self.validate_key()
+        return True
+
+    async def place_order(
+        self, base_asset: str, side: str, quote_quantity_usd: float, price: float | None = None
+    ) -> dict:
+        """Spot MARKET (market_market_ioc) order. Buy sized by quote, sell by base."""
+        side_u = side.upper()
+        if side_u not in ("BUY", "SELL"):
+            raise ValueError("side must be 'buy' or 'sell'")
+        if side_u == "BUY":
+            config = {"market_market_ioc": {"quote_size": str(round(float(quote_quantity_usd), 2))}}
+        else:
+            config = {"market_market_ioc": {"base_size": str(self._base_qty(quote_quantity_usd, price))}}
+        body = json.dumps({
+            "client_order_id": str(uuid.uuid4()),
+            "product_id": f"{base_asset.upper()}-USDT",
+            "side": side_u,
+            "order_configuration": config,
+        })
+        path = "/api/v3/brokerage/orders"
+        timestamp = str(int(time.time()))
+        signature = self._sign(timestamp, "POST", path, body)
+        headers = {**self._headers(timestamp, signature), "Content-Type": "application/json"}
+        async with self._client() as client:
+            resp = await client.post(f"{COINBASE_BASE}{path}", content=body, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("success") is False:
+            raise ValueError(f"Coinbase order error: {data.get('error_response', data)}")
+        return data

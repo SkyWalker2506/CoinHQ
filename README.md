@@ -215,8 +215,8 @@ exposing the API key and **without** the ability to withdraw or transfer funds.
 - **Audit log:** every order is recorded (`trade_orders`) with actor, asset, USD
   value and status; the 24h cap is computed from this log.
 - **Never possible:** withdrawals and transfers. Adapters only ever place
-  buy/sell orders. Currently wired for Binance spot; other exchanges return a
-  clear "not yet supported" until their order APIs are added.
+  buy/sell orders — no withdrawal endpoint is ever called. Spot trading is wired
+  for **Binance, Binance TR, Bybit, OKX, Coinbase, Kraken and Gate.io**.
 
 ---
 
