@@ -8,7 +8,7 @@ const fetcher = (url: string) =>
 
 export function usePortfolio(profileId: number) {
   const { data, error, isLoading, mutate } = useSWR(
-    profileId ? `${BASE_URL}/api/v1/portfolio/${profileId}` : null,
+    profileId ? `${BASE_URL}/api/v1/portfolio/profile/${profileId}` : null,
     fetcher,
     { refreshInterval: 60000 }
   )
