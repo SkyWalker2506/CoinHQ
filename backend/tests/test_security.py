@@ -128,14 +128,14 @@ class TestEncryption:
 class TestJWT:
     def test_access_token_has_correct_claims(self):
         token = create_access_token(user_id=42)
-        payload = jwt.decode(token, "test-jwt-secret-for-unit-tests-only", algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[ALGORITHM])
         assert payload["sub"] == "42"
         assert payload["type"] == "access"
         assert "exp" in payload
 
     def test_refresh_token_has_correct_claims(self):
         token = create_refresh_token(user_id=7)
-        payload = jwt.decode(token, "test-jwt-secret-for-unit-tests-only", algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[ALGORITHM])
         assert payload["sub"] == "7"
         assert payload["type"] == "refresh"
         assert "exp" in payload
@@ -159,7 +159,7 @@ class TestJWT:
 
     def test_decode_refresh_token_rejects_missing_sub(self):
         payload = {"exp": time.time() + 3600, "type": "refresh"}
-        token = jwt.encode(payload, "test-jwt-secret-for-unit-tests-only", algorithm=ALGORITHM)
+        token = jwt.encode(payload, settings.JWT_SECRET, algorithm=ALGORITHM)
         with pytest.raises(HTTPException) as exc:
             decode_refresh_token(token)
         assert exc.value.status_code == 401
@@ -209,7 +209,7 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio
     async def test_expired_token_raises_401(self):
         payload = {"sub": "1", "exp": time.time() - 10, "type": "access"}
-        token = jwt.encode(payload, "test-jwt-secret-for-unit-tests-only", algorithm=ALGORITHM)
+        token = jwt.encode(payload, settings.JWT_SECRET, algorithm=ALGORITHM)
         credentials = MagicMock()
         credentials.credentials = token
         db = AsyncMock()

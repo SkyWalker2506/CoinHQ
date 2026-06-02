@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { SharedPortfolioView } from "@/lib/types";
 import FollowButton from "@/components/FollowButton";
 import ShareViewTracker from "@/components/ShareViewTracker";
+import DelegateTradePanel from "@/components/DelegateTradePanel";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -79,8 +80,8 @@ export default async function SharePage({
           <span className="font-bold text-lg text-blue-400">CoinHQ</span>
           <div className="flex items-center gap-3">
             {data.allow_follow && <FollowButton token={token} />}
-            <span className="text-xs text-gray-500 bg-gray-800 px-3 py-1 rounded-full hidden sm:inline">
-              Read-only view
+            <span className={`text-xs px-3 py-1 rounded-full hidden sm:inline ${data.can_trade ? "bg-amber-500/20 text-amber-300" : "bg-gray-800 text-gray-500"}`}>
+              {data.can_trade ? "Trading enabled" : "Read-only view"}
             </span>
           </div>
         </div>
@@ -97,6 +98,19 @@ export default async function SharePage({
             <p className="text-xs text-gray-600 mt-2">Total value is hidden by the link owner</p>
           )}
         </div>
+
+        {/* Delegated trading */}
+        {data.can_trade && data.tradable_exchanges.length > 0 && (
+          <DelegateTradePanel
+            token={token}
+            exchanges={data.tradable_exchanges}
+            direction={data.trade_direction}
+            allowedCoins={data.trade_allowed_coins}
+            maxPerOrderUsd={data.trade_max_per_order_usd}
+            dailyLimitUsd={data.trade_daily_limit_usd}
+            spentTodayUsd={data.trade_spent_today_usd}
+          />
+        )}
 
         {/* Exchanges */}
         <div className="space-y-4">

@@ -76,3 +76,46 @@ class BinanceTRAdapter(ExchangeAdapter):
             raise ValueError(f"Binance TR API error: {data.get('msg', 'Unknown error')}")
 
         return True
+
+    async def validate_trade_key(self) -> bool:
+        """Binance TR does not expose permission flags, so we can only verify the key
+        works. CoinHQ never calls any withdrawal endpoint, so funds cannot leave the
+        account regardless — but users should still create a no-withdrawal key."""
+        await self.validate_key()
+        return True
+
+    async def place_order(
+        self, base_asset: str, side: str, quote_quantity_usd: float, price: float | None = None
+    ) -> dict:
+        """Spot MARKET order via the Binance TR open API (/open/v1/orders).
+
+        side encoding follows the open API: 0=BUY, 1=SELL; type 2=MARKET. Buys are
+        sized by quote (quoteOrderQty); sells are sized by base quantity.
+        """
+        side_l = side.lower()
+        if side_l not in ("buy", "sell"):
+            raise ValueError("side must be 'buy' or 'sell'")
+        params: dict = {
+            "symbol": f"{base_asset.upper()}_USDT",
+            "side": 0 if side_l == "buy" else 1,
+            "type": 2,  # MARKET
+            "timestamp": int(time.time() * 1000),
+            "recvWindow": 5000,
+        }
+        if side_l == "buy":
+            params["quoteOrderQty"] = round(float(quote_quantity_usd), 2)
+        else:
+            params["quantity"] = self._base_qty(quote_quantity_usd, price)
+        params["signature"] = self._sign(params)
+
+        async with self._client() as client:
+            resp = await client.post(
+                f"{BINANCETR_BASE}/open/v1/orders",
+                params=params,
+                headers=self._headers(),
+            )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") not in (None, 0, "0", 200):
+            raise ValueError(f"Binance TR order error: {data.get('msg', 'unknown')}")
+        return data.get("data", data)

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import time
 from contextlib import asynccontextmanager
 
@@ -84,3 +85,56 @@ class BybitAdapter(ExchangeAdapter):
             raise ValueError("Write permissions detected. Only read-only API keys are accepted.")
 
         return True
+
+    async def validate_trade_key(self) -> bool:
+        """Accept keys that can trade spot but cannot withdraw."""
+        timestamp = str(int(time.time() * 1000))
+        sign = self._sign(timestamp, "")
+        async with self._client() as client:
+            resp = await client.get(
+                f"{BYBIT_BASE}/v5/user/query-api",
+                headers=self._headers(timestamp, sign),
+            )
+        resp.raise_for_status()
+        result = resp.json().get("result", {})
+
+        permissions = result.get("permissions", {}) or {}
+        if permissions.get("Withdraw"):
+            logger.error("trade_key_withdrawal_rejected", exchange="bybit", key=self._mask_key())
+            raise ValueError(
+                "This key can withdraw funds. Trade keys must have withdrawals disabled."
+            )
+        spot = permissions.get("Spot") or []
+        if str(result.get("readOnly", "1")) != "0" and not spot:
+            raise ValueError("This key cannot trade. Enable spot trading (withdrawals off).")
+        return True
+
+    async def place_order(
+        self, base_asset: str, side: str, quote_quantity_usd: float, price: float | None = None
+    ) -> dict:
+        """Spot MARKET order; qty denominated in the quote coin (marketUnit=quoteCoin)."""
+        side_t = side.capitalize()
+        if side_t not in ("Buy", "Sell"):
+            raise ValueError("side must be 'buy' or 'sell'")
+        body = json.dumps({
+            "category": "spot",
+            "symbol": f"{base_asset.upper()}USDT",
+            "side": side_t,
+            "orderType": "Market",
+            "qty": str(round(float(quote_quantity_usd), 2)),
+            "marketUnit": "quoteCoin",
+        })
+        timestamp = str(int(time.time() * 1000))
+        sign = self._sign(timestamp, body)
+        headers = {**self._headers(timestamp, sign), "Content-Type": "application/json"}
+        async with self._client() as client:
+            resp = await client.post(
+                f"{BYBIT_BASE}/v5/order/create",
+                content=body,
+                headers=headers,
+            )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("retCode") not in (0, None):
+            raise ValueError(f"Bybit order error: {data.get('retMsg', 'unknown')}")
+        return data.get("result", data)

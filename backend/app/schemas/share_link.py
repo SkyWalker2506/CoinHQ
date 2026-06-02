@@ -1,6 +1,9 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, computed_field
+
+TradeDirection = Literal["both", "buy", "sell"]
 
 
 class ShareLinkCreate(BaseModel):
@@ -12,6 +15,28 @@ class ShareLinkCreate(BaseModel):
     expires_at: datetime | None = None
     label: str | None = None
     allow_follow: bool = True
+    # Delegated trade permission (withdrawals/transfers are never granted)
+    can_trade: bool = False
+    trade_direction: TradeDirection = "both"
+    trade_allowed_coins: str | None = None  # CSV whitelist, empty/None = all coins
+    trade_max_per_order_usd: float | None = None
+    trade_daily_limit_usd: float | None = None
+
+
+class ShareLinkUpdate(BaseModel):
+    """Partial update — only provided fields are applied (PATCH semantics)."""
+    show_total_value: bool | None = None
+    show_coin_amounts: bool | None = None
+    show_exchange_names: bool | None = None
+    show_allocation_pct: bool | None = None
+    expires_at: datetime | None = None
+    label: str | None = None
+    allow_follow: bool | None = None
+    can_trade: bool | None = None
+    trade_direction: TradeDirection | None = None
+    trade_allowed_coins: str | None = None
+    trade_max_per_order_usd: float | None = None
+    trade_daily_limit_usd: float | None = None
 
 
 class ShareLinkResponse(BaseModel):
@@ -29,6 +54,11 @@ class ShareLinkResponse(BaseModel):
     allow_follow: bool = True
     view_count: int = 0
     last_viewed_at: datetime | None = None
+    can_trade: bool = False
+    trade_direction: str = "both"
+    trade_allowed_coins: str | None = None
+    trade_max_per_order_usd: float | None = None
+    trade_daily_limit_usd: float | None = None
 
     @computed_field
     @property
@@ -71,3 +101,11 @@ class SharedPortfolioView(BaseModel):
     show_exchange_names: bool
     show_allocation_pct: bool
     allow_follow: bool = True
+    # Delegated trade context (populated only when can_trade is True)
+    can_trade: bool = False
+    trade_direction: str = "both"
+    trade_allowed_coins: str | None = None
+    trade_max_per_order_usd: float | None = None
+    trade_daily_limit_usd: float | None = None
+    trade_spent_today_usd: float = 0.0
+    tradable_exchanges: list[str] = []

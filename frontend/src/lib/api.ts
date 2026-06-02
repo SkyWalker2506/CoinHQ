@@ -1,11 +1,15 @@
 import type {
   Profile,
   ExchangeKey,
+  KeyType,
   PortfolioResponse,
   AggregatePortfolioResponse,
   ShareLink,
   ShareLinkCreate,
+  ShareLinkUpdate,
   SharedPortfolioView,
+  TradeOrder,
+  TradeOrderRequest,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -105,11 +109,12 @@ export const addKey = (
   profileId: number,
   exchange: string,
   api_key: string,
-  api_secret: string
+  api_secret: string,
+  key_type: KeyType = "read_only"
 ) =>
   request<ExchangeKey>(`/api/v1/profiles/${profileId}/keys/`, {
     method: "POST",
-    body: JSON.stringify({ exchange, api_key, api_secret }),
+    body: JSON.stringify({ exchange, api_key, api_secret, key_type }),
   });
 
 export const deleteKey = (profileId: number, keyId: number) =>
@@ -137,8 +142,30 @@ export const createShareLink = (payload: ShareLinkCreate) =>
     body: JSON.stringify(payload),
   });
 
+export const updateShareLink = (id: number, payload: ShareLinkUpdate) =>
+  request<ShareLink>(`/api/v1/share/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
 export const revokeShareLink = (id: number) =>
   fetch(`${BASE_URL}/api/v1/share/${id}`, { method: "DELETE", headers: getAuthHeader() });
 
 export const getPublicShare = (token: string) =>
   request<SharedPortfolioView>(`/api/v1/public/share/${token}`);
+
+// Trading
+export const ownerTrade = (profileId: number, payload: TradeOrderRequest) =>
+  request<TradeOrder>(`/api/v1/profiles/${profileId}/trade`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const getTrades = (profileId: number) =>
+  request<TradeOrder[]>(`/api/v1/profiles/${profileId}/trade`);
+
+export const delegateTrade = (token: string, payload: TradeOrderRequest) =>
+  request<TradeOrder>(`/api/v1/public/share/${token}/trade`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

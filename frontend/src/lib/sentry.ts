@@ -5,6 +5,10 @@
 
 let _initialized = false;
 
+// Typed as `string` (not a string literal) so TypeScript does not try to resolve
+// the optional @sentry/nextjs module at build time when it isn't installed.
+const SENTRY_PKG: string = '@sentry/nextjs';
+
 /**
  * Scrub PII from Sentry events before sending.
  * - Strips query strings (removes ?token=... JWT leaks from /auth/callback)
@@ -33,13 +37,16 @@ async function initSentry() {
   const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
   if (!dsn || _initialized || typeof window === 'undefined') return;
   try {
-    const Sentry = await import('@sentry/nextjs');
+    // webpackIgnore keeps the optional dependency out of the bundle so the
+    // build never fails when @sentry/nextjs is not installed. The call only
+    // runs when NEXT_PUBLIC_SENTRY_DSN is set (and the package is present).
+    const Sentry = await import(/* webpackIgnore: true */ SENTRY_PKG);
     Sentry.init({
       dsn,
       tracesSampleRate: 0.1,
       environment: process.env.NODE_ENV,
-      beforeSend(event) {
-        return _scrubEvent(event as unknown as Record<string, unknown>) as typeof event;
+      beforeSend(event: Record<string, unknown>) {
+        return _scrubEvent(event);
       },
     });
     _initialized = true;
@@ -53,8 +60,8 @@ export async function captureError(error: Error, context?: Record<string, unknow
   if (!dsn || typeof window === 'undefined') return;
   try {
     await initSentry();
-    const Sentry = await import('@sentry/nextjs');
-    Sentry.withScope((scope) => {
+    const Sentry = await import(/* webpackIgnore: true */ SENTRY_PKG);
+    Sentry.withScope((scope: { setExtra: (k: string, v: unknown) => void }) => {
       if (context) {
         Object.entries(context).forEach(([key, value]) => {
           scope.setExtra(key, value);

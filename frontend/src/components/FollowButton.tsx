@@ -32,7 +32,7 @@ export default function FollowButton({ token }: { token: string }) {
   if (state === "done") {
     return (
       <span className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-700/30 border border-green-600 text-green-400 rounded-xl text-sm font-medium">
-        Portfolyonuza eklendi
+        Added to your portfolio
       </span>
     );
   }
@@ -40,12 +40,12 @@ export default function FollowButton({ token }: { token: string }) {
   if (state === "login") {
     return (
       <div className="text-center">
-        <p className="text-sm text-gray-400 mb-3">Takip etmek icin giris yapmaniz gerekiyor</p>
+        <p className="text-sm text-gray-400 mb-3">Sign in to follow this portfolio</p>
         <a
           href={`${BASE_URL}/api/v1/auth/google`}
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors"
         >
-          Google ile Giris Yap
+          Sign in with Google
         </a>
       </div>
     );
@@ -65,10 +65,10 @@ export default function FollowButton({ token }: { token: string }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
         )}
-        Portfolyoma Ekle
+        Add to my portfolio
       </button>
       {state === "error" && (
-        <p className="text-xs text-red-400">Takip edilemedi. Tekrar deneyin.</p>
+        <p className="text-xs text-red-400">Could not follow. Please try again.</p>
       )}
     </div>
   );

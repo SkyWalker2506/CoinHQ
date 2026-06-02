@@ -79,3 +79,50 @@ class BinanceAdapter(ExchangeAdapter):
             raise ValueError("Write permissions detected. Only read-only API keys are accepted.")
 
         return True
+
+    async def validate_trade_key(self) -> bool:
+        """Accept keys that can trade spot but cannot withdraw/transfer."""
+        params = self._sign({"timestamp": int(time.time() * 1000)})
+        async with self._client() as client:
+            resp = await client.get(
+                f"{BINANCE_BASE}/api/v3/account",
+                params=params,
+                headers=self._headers(),
+            )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # A trade key must NOT be able to move funds off the account.
+        if data.get("enableWithdrawals") or data.get("enableInternalTransfer"):
+            logger.error("trade_key_withdrawal_rejected", exchange="binance", key=self._mask_key())
+            raise ValueError(
+                "This key can withdraw or transfer funds. Trade keys must have "
+                "withdrawals and transfers disabled."
+            )
+        if not data.get("canTrade"):
+            raise ValueError("This key cannot trade. Enable spot trading on the key (withdrawals off).")
+
+        return True
+
+    async def place_order(
+        self, base_asset: str, side: str, quote_quantity_usd: float, price: float | None = None
+    ) -> dict:
+        """Place a spot MARKET order quoted in USDT (quoteOrderQty)."""
+        side_u = side.upper()
+        if side_u not in ("BUY", "SELL"):
+            raise ValueError("side must be 'buy' or 'sell'")
+        params = self._sign({
+            "symbol": f"{base_asset.upper()}USDT",
+            "side": side_u,
+            "type": "MARKET",
+            "quoteOrderQty": round(float(quote_quantity_usd), 2),
+            "timestamp": int(time.time() * 1000),
+        })
+        async with self._client() as client:
+            resp = await client.post(
+                f"{BINANCE_BASE}/api/v3/order",
+                params=params,
+                headers=self._headers(),
+            )
+        resp.raise_for_status()
+        return resp.json()
