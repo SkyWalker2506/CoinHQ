@@ -196,6 +196,30 @@ Portfolio owners can create public share links from Settings:
 
 ---
 
+## Delegated Trading
+
+Beyond read-only sharing, an owner can delegate **buy/sell** access — without ever
+exposing the API key and **without** the ability to withdraw or transfer funds.
+
+- **Key tiers:** each exchange connection is a `read_only` key (rejects any write
+  permission) or a `trade` key. A `trade` key must be able to place spot orders
+  but is rejected at validation time if it can withdraw or transfer.
+- **Owner trading:** the profile owner can place spot market buy/sell orders from
+  Settings using the profile's trade key.
+- **Delegated trading:** a share link can be flagged `can_trade`. The link holder
+  places orders through the backend (which proxies the signed request) within the
+  owner's limits — the trade key is never revealed.
+- **Per-link limits** (all optional, editable any time, revocable any time):
+  max USD per order, 24h USD cap, allowed-coin whitelist, and direction
+  (buy-only / sell-only / both).
+- **Audit log:** every order is recorded (`trade_orders`) with actor, asset, USD
+  value and status; the 24h cap is computed from this log.
+- **Never possible:** withdrawals and transfers. Adapters only ever place
+  buy/sell orders. Currently wired for Binance spot; other exchanges return a
+  clear "not yet supported" until their order APIs are added.
+
+---
+
 ## Roadmap
 
 | Phase | Goal | Key Features |

@@ -4,10 +4,13 @@ export interface Profile {
   created_at: string;
 }
 
+export type KeyType = "read_only" | "trade";
+
 export interface ExchangeKey {
   id: number;
   profile_id: number;
   exchange: string;
+  key_type: KeyType;
   created_at: string;
 }
 
@@ -48,7 +51,17 @@ export interface AggregatePortfolioResponse {
 
 export type SupportedExchange = "binance" | "bybit" | "okx" | "coinbase" | "kraken" | "binancetr";
 
-export interface ShareLink {
+export type TradeDirection = "both" | "buy" | "sell";
+
+export interface TradePermissions {
+  can_trade: boolean;
+  trade_direction: TradeDirection;
+  trade_allowed_coins: string | null;
+  trade_max_per_order_usd: number | null;
+  trade_daily_limit_usd: number | null;
+}
+
+export interface ShareLink extends TradePermissions {
   id: number;
   token: string;
   profile_id: number;
@@ -75,6 +88,35 @@ export interface ShareLinkCreate {
   expires_at: string | null;
   label: string | null;
   allow_follow?: boolean;
+  can_trade?: boolean;
+  trade_direction?: TradeDirection;
+  trade_allowed_coins?: string | null;
+  trade_max_per_order_usd?: number | null;
+  trade_daily_limit_usd?: number | null;
+}
+
+export type ShareLinkUpdate = Partial<Omit<ShareLinkCreate, "profile_id">>;
+
+export interface TradeOrderRequest {
+  exchange: string;
+  asset: string;
+  side: "buy" | "sell";
+  usd_amount: number;
+}
+
+export interface TradeOrder {
+  id: number;
+  exchange: string;
+  symbol: string;
+  base_asset: string;
+  side: "buy" | "sell";
+  usd_value: number;
+  amount: number | null;
+  status: string;
+  actor: string;
+  exchange_order_id: string | null;
+  error: string | null;
+  created_at: string;
 }
 
 export interface SharedAsset {
@@ -100,4 +142,11 @@ export interface SharedPortfolioView {
   show_exchange_names: boolean;
   show_allocation_pct: boolean;
   allow_follow: boolean;
+  can_trade: boolean;
+  trade_direction: TradeDirection;
+  trade_allowed_coins: string | null;
+  trade_max_per_order_usd: number | null;
+  trade_daily_limit_usd: number | null;
+  trade_spent_today_usd: number;
+  tradable_exchanges: string[];
 }

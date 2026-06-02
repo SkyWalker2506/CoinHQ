@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getProfiles, deleteProfile, getKeys, deleteKey } from "@/lib/api";
+import { getProfiles, deleteProfile, getKeys, deleteKey, ownerTrade } from "@/lib/api";
 import type { Profile, ExchangeKey } from "@/lib/types";
 import AddProfileModal from "@/components/AddProfileModal";
 import AddKeyModal from "@/components/AddKeyModal";
 import ShareLinkManager from "@/components/ShareLinkManager";
+import TradePanel from "@/components/TradePanel";
 import { Navigation } from "@/components/Navigation";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
@@ -124,11 +125,20 @@ export default function SettingsPage() {
                   key={key.id}
                   className="flex items-center justify-between bg-gray-800 rounded-lg px-3 sm:px-4 py-2"
                 >
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-white capitalize">
                       {key.exchange}
                     </span>
-                    <span className="text-xs text-gray-500 ml-3">
+                    <span
+                      className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                        key.key_type === "trade"
+                          ? "bg-amber-500/20 text-amber-300"
+                          : "bg-gray-700 text-gray-400"
+                      }`}
+                    >
+                      {key.key_type === "trade" ? "Trade" : "Read-only"}
+                    </span>
+                    <span className="text-xs text-gray-500 ml-1">
                       Added {new Date(key.created_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -149,13 +159,37 @@ export default function SettingsPage() {
             >
               + Add API Key
             </button>
+
+            {/* Owner trading — only when the profile has a trade key */}
+            {(() => {
+              const tradeExchanges = (keys[profile.id] ?? [])
+                .filter((k) => k.key_type === "trade")
+                .map((k) => k.exchange);
+              if (tradeExchanges.length === 0) return null;
+              return (
+                <div className="mt-4 border-t border-gray-800 pt-4">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
+                    Trade
+                  </p>
+                  <TradePanel
+                    exchanges={tradeExchanges}
+                    onSubmit={(payload) => ownerTrade(profile.id, payload)}
+                  />
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>
 
       {/* Share Links */}
       <div className="mt-8">
-        <ShareLinkManager profiles={profiles} />
+        <ShareLinkManager
+          profiles={profiles}
+          tradeKeyProfileIds={profiles
+            .filter((p) => (keys[p.id] ?? []).some((k) => k.key_type === "trade"))
+            .map((p) => p.id)}
+        />
       </div>
 
       {/* Modals */}

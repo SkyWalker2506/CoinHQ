@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { getShareLinks, revokeShareLink } from "@/lib/api";
 import type { Profile, ShareLink } from "@/lib/types";
 import CreateShareLinkModal from "./CreateShareLinkModal";
+import EditTradeModal from "./EditTradeModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { events } from "@/lib/analytics";
 
 interface Props {
   profiles: Profile[];
+  // Profile ids that have a trade key — gates the "allow trading" option.
+  tradeKeyProfileIds?: number[];
 }
 
 const BASE_URL =
@@ -16,8 +19,10 @@ const BASE_URL =
     ? window.location.origin
     : process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
-export default function ShareLinkManager({ profiles }: Props) {
+export default function ShareLinkManager({ profiles, tradeKeyProfileIds = [] }: Props) {
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+  const [editTradeLink, setEditTradeLink] = useState<ShareLink | null>(null);
+  const profileHasTradeKey = (id: number | null) => id != null && tradeKeyProfileIds.includes(id);
 
   useEffect(() => {
     if (selectedProfileId === null && profiles.length > 0) {
@@ -153,6 +158,11 @@ export default function ShareLinkManager({ profiles }: Props) {
                       {`${BASE_URL}/share/${link.token.slice(0, 12)}…`}
                     </span>
                   )}
+                  {link.can_trade && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full shrink-0">
+                      Trade
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                   <span className="text-xs text-gray-500">
@@ -186,6 +196,13 @@ export default function ShareLinkManager({ profiles }: Props) {
                   className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-xs text-white rounded-lg transition-colors"
                 >
                   {copied === link.token ? "Copied!" : "Copy URL"}
+                </button>
+                <button
+                  onClick={() => setEditTradeLink(link)}
+                  aria-label={`Edit trade permissions for ${link.label || 'share link'}`}
+                  className="text-xs text-amber-400 hover:text-amber-300 px-2"
+                >
+                  Trade
                 </button>
                 <button
                   onClick={() => handleRevoke(link.id)}
@@ -227,8 +244,21 @@ export default function ShareLinkManager({ profiles }: Props) {
       {showCreate && selectedProfileId !== null && (
         <CreateShareLinkModal
           profileId={selectedProfileId}
+          hasTradeKey={profileHasTradeKey(selectedProfileId)}
           onClose={() => setShowCreate(false)}
           onCreated={handleCreated}
+        />
+      )}
+
+      {editTradeLink && (
+        <EditTradeModal
+          link={editTradeLink}
+          hasTradeKey={profileHasTradeKey(editTradeLink.profile_id)}
+          onClose={() => setEditTradeLink(null)}
+          onSaved={() => {
+            setEditTradeLink(null);
+            loadLinks();
+          }}
         />
       )}
 

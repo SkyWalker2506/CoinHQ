@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { addKey } from "@/lib/api";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
-import type { SupportedExchange } from "@/lib/types";
+import type { KeyType, SupportedExchange } from "@/lib/types";
 import { events } from "@/lib/analytics";
 
 const EXCHANGES: { id: SupportedExchange; label: string }[] = [
@@ -90,6 +90,7 @@ interface Props {
 
 export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
   const [exchange, setExchange] = useState<SupportedExchange>("binance");
+  const [keyType, setKeyType] = useState<KeyType>("read_only");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [loading, setLoading] = useState(false);
@@ -110,7 +111,7 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await addKey(profileId, exchange, apiKey.trim(), apiSecret.trim());
+      await addKey(profileId, exchange, apiKey.trim(), apiSecret.trim(), keyType);
       events.exchangeConnected(exchange);
       onAdded();
       onClose();
@@ -154,6 +155,42 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
             </select>
           </div>
 
+          {/* Key type selector */}
+          <div>
+            <span className="block text-sm text-gray-400 mb-1">Key type</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setKeyType("read_only")}
+                aria-pressed={keyType === "read_only"}
+                className={`px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                  keyType === "read_only"
+                    ? "bg-blue-600 border-blue-500 text-white"
+                    : "bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
+                }`}
+              >
+                Read-only
+              </button>
+              <button
+                type="button"
+                onClick={() => setKeyType("trade")}
+                aria-pressed={keyType === "trade"}
+                className={`px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                  keyType === "trade"
+                    ? "bg-amber-600 border-amber-500 text-white"
+                    : "bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
+                }`}
+              >
+                Trade (buy/sell)
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {keyType === "read_only"
+                ? "Only balance/read access. Keys with trade or withdrawal permissions are rejected."
+                : "Allows placing buy/sell orders. The key must have withdrawals and transfers disabled — these are rejected for safety."}
+            </p>
+          </div>
+
           {/* Smart exchange link */}
           <div className="bg-gray-800 rounded-lg p-3 flex items-start gap-3">
             <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -162,8 +199,8 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-400 mb-2">
                 {isMobile
-                  ? "API key yönetimi genellikle web üzerinden yapılır. Aşağıdan borsaya gidin:"
-                  : "API key oluşturmak için borsanın sitesine gidin:"}
+                  ? "API keys are usually managed on the web. Open the exchange below:"
+                  : "Open the exchange's site to create an API key:"}
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -174,7 +211,7 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
-                  {exchange.charAt(0).toUpperCase() + exchange.slice(1)} API Yönetimi
+                  {exchange.charAt(0).toUpperCase() + exchange.slice(1)} API management
                 </button>
                 {isMobile && (
                   <>
@@ -212,7 +249,7 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
               type="text"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Paste your read-only API key"
+              placeholder="Paste your API key"
               autoComplete="off"
               className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm font-mono focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
             />
@@ -238,7 +275,7 @@ export default function AddKeyModal({ profileId, onClose, onAdded }: Props) {
           </div>
 
           <p className="text-xs text-gray-500">
-            Keys are encrypted with AES-256 before storage. Only read-only keys are accepted.
+            Keys are encrypted with AES-256 before storage. Withdrawal/transfer permissions are always rejected.
           </p>
           {error && <p role="alert" className="text-red-400 text-sm">{error}</p>}
 
