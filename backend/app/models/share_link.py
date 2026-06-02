@@ -28,6 +28,13 @@ class ShareLink(Base):
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)
     allow_follow: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Delegated trade permissions. Withdrawals/transfers are NEVER permitted.
+    can_trade: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    trade_direction: Mapped[str] = mapped_column(String(10), default="both", server_default="both")  # both|buy|sell
+    trade_allowed_coins: Mapped[str | None] = mapped_column(String(255), nullable=True)  # CSV whitelist, empty = all
+    trade_max_per_order_usd: Mapped[float | None] = mapped_column(nullable=True)
+    trade_daily_limit_usd: Mapped[float | None] = mapped_column(nullable=True)
+
     profile = relationship("Profile")
 
     @staticmethod

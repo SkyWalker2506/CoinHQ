@@ -30,6 +30,31 @@ class ExchangeAdapter(ABC):
         """
         ...
 
+    # ── Trading (Phase 2) ────────────────────────────────────────────────────
+    # Default implementations refuse trading. Adapters that support spot trading
+    # override these. Withdrawals/transfers are NEVER implemented.
+
+    async def validate_trade_key(self) -> bool:
+        """Validate that the API key can trade (spot) but CANNOT withdraw/transfer.
+
+        Implementations MUST:
+        - Return True if the key can place spot orders and withdrawals are disabled.
+        - Raise ValueError if the key can withdraw or transfer funds.
+        - Raise ValueError if the key cannot trade.
+        """
+        raise NotImplementedError(
+            f"Trading is not supported for {self.__class__.__name__} yet."
+        )
+
+    async def place_order(self, base_asset: str, side: str, quote_quantity_usd: float) -> dict:
+        """Place a spot MARKET order for ~quote_quantity_usd of base_asset against USDT.
+
+        `side` is "buy" or "sell". Returns the raw exchange order response.
+        """
+        raise NotImplementedError(
+            f"Trading is not supported for {self.__class__.__name__} yet."
+        )
+
     def _mask_key(self) -> str:
         """Return masked API key for logging."""
         return self.api_key[:6] + "..." if len(self.api_key) > 6 else "***"
