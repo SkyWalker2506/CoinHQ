@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 
-from app.api.v1 import admin, auth, history, keys, portfolio, profiles, share, trade, waitlist
+from app.api.v1 import admin, auth, history, keys, pnl, portfolio, profiles, share, trade, waitlist
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(auth.router)
 router.include_router(profiles.router)
+router.include_router(pnl.router)
 router.include_router(keys.router)
 router.include_router(portfolio.router)
 router.include_router(history.router)
