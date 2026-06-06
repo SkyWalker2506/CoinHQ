@@ -1,4 +1,5 @@
 import useSWR from 'swr'
+import type { TradeOrder } from '@/lib/types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -18,4 +19,17 @@ export function usePortfolio(profileId: number) {
 export function useProfiles() {
   const { data, error, isLoading } = useSWR(`${BASE_URL}/api/v1/profiles/`, fetcher)
   return { profiles: data, error, isLoading }
+}
+
+export function useTradeHistory(profileId: number | null) {
+  const { data, error, isLoading } = useSWR<TradeOrder[]>(
+    profileId != null ? `${BASE_URL}/api/v1/profiles/${profileId}/trade` : null,
+    fetcher
+  )
+  const sorted = data
+    ? [...data].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+    : data
+  return { trades: sorted, error, isLoading }
 }
