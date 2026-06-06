@@ -108,7 +108,7 @@ class KrakenAdapter(ExchangeAdapter):
 
         if resp.status_code == 403:
             logger.error("exchange_key_invalid", exchange="kraken", key=self._mask_key())
-            return False
+            raise ValueError("Invalid API key or permissions for Kraken")
 
         resp.raise_for_status()
         result = resp.json()
@@ -120,6 +120,45 @@ class KrakenAdapter(ExchangeAdapter):
                 # Key is valid but restricted — acceptable for read-only use
                 return True
             logger.error("exchange_key_invalid", exchange="kraken", key=self._mask_key(), errors=errors)
-            return False
+            raise ValueError(f"Kraken API key error: {errors}")
 
         return True
+
+    async def validate_trade_key(self) -> bool:
+        """Kraken does not cleanly expose per-key withdrawal flags here, so we verify
+        connectivity. CoinHQ never calls any withdrawal endpoint; create a key with
+        'Create & modify orders' but without 'Withdraw funds'."""
+        await self.validate_key()
+        return True
+
+    async def place_order(
+        self, base_asset: str, side: str, quote_quantity_usd: float, price: float | None = None
+    ) -> dict:
+        """Spot MARKET order. Kraken sizes orders by base volume, so a price is required."""
+        side_l = side.lower()
+        if side_l not in ("buy", "sell"):
+            raise ValueError("side must be 'buy' or 'sell'")
+        kraken_base = "XBT" if base_asset.upper() == "BTC" else base_asset.upper()
+        volume = self._base_qty(quote_quantity_usd, price)
+        path = "/0/private/AddOrder"
+        nonce = str(int(time.time() * 1000))
+        params = {
+            "nonce": nonce,
+            "ordertype": "market",
+            "type": side_l,
+            "volume": str(volume),
+            "pair": f"{kraken_base}USDT",
+        }
+        from urllib.parse import urlencode
+        data = urlencode(params)
+        async with self._client() as client:
+            resp = await client.post(
+                f"{KRAKEN_BASE}{path}",
+                headers=self._headers(path, nonce, data),
+                content=data,
+            )
+        resp.raise_for_status()
+        result = resp.json()
+        if result.get("error"):
+            raise ValueError(f"Kraken order error: {result['error']}")
+        return result.get("result", result)

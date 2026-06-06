@@ -1,20 +1,87 @@
 import type {
   Profile,
   ExchangeKey,
+  KeyType,
   PortfolioResponse,
   AggregatePortfolioResponse,
   ShareLink,
   ShareLinkCreate,
+  ShareLinkUpdate,
   SharedPortfolioView,
+  TradeOrder,
+  TradeOrderRequest,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
+function getAuthHeader(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (!refreshToken) return null;
+
+  try {
+    const res = await fetch(`${BASE_URL}/api/v1/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    localStorage.setItem("token", data.access_token);
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+      ...(options?.headers as Record<string, string> | undefined),
+    },
   });
+
+  // Handle expired token — try refresh once
+  if (res.status === 401 && getToken()) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      const retryRes = await fetch(`${BASE_URL}${path}`, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${newToken}`,
+          ...(options?.headers as Record<string, string> | undefined),
+        },
+      });
+      if (retryRes.ok) return retryRes.json();
+      if (retryRes.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("refresh_token");
+        window.location.href = "/login";
+        throw new Error("Session expired. Please log in again.");
+      }
+      const error = await retryRes.json().catch(() => ({ detail: retryRes.statusText }));
+      throw new Error(error.detail ?? "Request failed");
+    }
+    // Refresh failed — clear tokens and redirect
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh_token");
+    window.location.href = "/login";
+    throw new Error("Session expired. Please log in again.");
+  }
+
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail ?? "Request failed");
@@ -32,7 +99,7 @@ export const createProfile = (name: string) =>
   });
 
 export const deleteProfile = (id: number) =>
-  fetch(`${BASE_URL}/api/v1/profiles/${id}`, { method: "DELETE" });
+  fetch(`${BASE_URL}/api/v1/profiles/${id}`, { method: "DELETE", headers: getAuthHeader() });
 
 // Exchange Keys
 export const getKeys = (profileId: number) =>
@@ -42,16 +109,18 @@ export const addKey = (
   profileId: number,
   exchange: string,
   api_key: string,
-  api_secret: string
+  api_secret: string,
+  key_type: KeyType = "read_only"
 ) =>
   request<ExchangeKey>(`/api/v1/profiles/${profileId}/keys/`, {
     method: "POST",
-    body: JSON.stringify({ exchange, api_key, api_secret }),
+    body: JSON.stringify({ exchange, api_key, api_secret, key_type }),
   });
 
 export const deleteKey = (profileId: number, keyId: number) =>
   fetch(`${BASE_URL}/api/v1/profiles/${profileId}/keys/${keyId}`, {
     method: "DELETE",
+    headers: getAuthHeader(),
   });
 
 // Portfolio
@@ -73,8 +142,30 @@ export const createShareLink = (payload: ShareLinkCreate) =>
     body: JSON.stringify(payload),
   });
 
+export const updateShareLink = (id: number, payload: ShareLinkUpdate) =>
+  request<ShareLink>(`/api/v1/share/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
 export const revokeShareLink = (id: number) =>
-  fetch(`${BASE_URL}/api/v1/share/${id}`, { method: "DELETE" });
+  fetch(`${BASE_URL}/api/v1/share/${id}`, { method: "DELETE", headers: getAuthHeader() });
 
 export const getPublicShare = (token: string) =>
   request<SharedPortfolioView>(`/api/v1/public/share/${token}`);
+
+// Trading
+export const ownerTrade = (profileId: number, payload: TradeOrderRequest) =>
+  request<TradeOrder>(`/api/v1/profiles/${profileId}/trade`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const getTrades = (profileId: number) =>
+  request<TradeOrder[]>(`/api/v1/profiles/${profileId}/trade`);
+
+export const delegateTrade = (token: string, payload: TradeOrderRequest) =>
+  request<TradeOrder>(`/api/v1/public/share/${token}/trade`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

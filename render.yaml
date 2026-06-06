@@ -1,0 +1,36 @@
+# Render Blueprint — CoinHQ backend (FastAPI)
+# Data layer is external: Supabase (Postgres) + Upstash (Redis).
+# Secret env vars are sync:false → set in Render dashboard or via the API (never committed).
+services:
+  - type: web
+    name: coinhq-backend
+    runtime: docker
+    repo: https://github.com/SkyWalker2506/CoinHQ
+    branch: main
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_URL        # Supabase — use the IPv4 Session Pooler URL (Render egress is IPv4)
+        sync: false
+      - key: REDIS_URL           # Upstash rediss:// URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: BACKEND_URL         # set to the https://<svc>.onrender.com URL after first deploy
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS        # JSON array, e.g. ["https://coinhq-app.vercel.app"]
+        sync: false

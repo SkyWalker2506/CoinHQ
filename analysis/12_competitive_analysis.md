@@ -1,105 +1,115 @@
-# Competitive Analysis Analiz Raporu
+# Competitive Analysis — CoinHQ
+_Date: 2026-04-10 · Lead: BizLead (A12) · Model: Sonnet 4.6_
 
-> Lead: BizLead (A12) | Tarih: 2026-04-05
+## Delta vs 2026-04-06
 
----
+Nisan 6 rekabet analizi CoinHQ'yu **4/10** olarak değerlendirdi. Temel bulgular geçerliliğini koruyor. Değişen tek şey: tier sistemi artık Cloud Free vs Cloud Premium olarak netleşti. Bu, CoinHQ'nun "self-hosted free + cloud paid" konumlandırmasını Ghostfolio'nun modeliyle örtüştürüyor.
 
-## Mevcut Durum
+**Güncel puan: 4/10** — konumlandırma potansiyeli güçlü, özellik seti rakiplerin gerisinde.
 
-### Rakip Haritası
+## Current State
 
-| Rakip | Odak | Fiyat | Güçlü Yan | Zayıf Yan |
-|-------|------|-------|-----------|-----------|
-| **CoinStats** | CEX + DeFi tracker | Ücretsiz / ~$3.49-9.9/ay | 120 blockchain, 300+ entegrasyon, sosyal özellikler | Karmaşık UI, veri mahremiyeti yok |
-| **Delta (eToro)** | Multi-asset (kripto + hisse) | Ücretsiz / $59.99/yıl | Hisse + kripto birlikte, temiz UI | API key delegasyonu yok, sınırlı DeFi |
-| **Koinly** | Vergi + portföy | Ücretsiz / $49-280/yıl | Vergi raporlama, 700+ entegrasyon | Vergi odaklı, trading özelliği yok |
-| **Blockpit/Accointing** | Vergi (Avrupa) | $4.99/ay+ | AB uyumu | 50k+ işlemde sorun, pahalı |
-| **Zapper** | DeFi on-chain | Ücretsiz | Wallet-based, DEX tracking, "zap" | Sadece on-chain, CEX desteği zayıf |
-| **DeBank** | DeFi analytics | Ücretsiz + ücretli mesaj | 56+ blockchain, sosyal özellikler | Ticari model belirsiz, CEX yok |
-| **rotki** | Self-hosted gizlilik | Açık kaynak ücretsiz | Tam gizlilik, lokal şifreleme | Teknik kurulum, mobil yok |
-| **Ghostfolio** | Self-hosted çoklu varlık | Açık kaynak / $19/ay cloud | Hisse + kripto, gizlilik | Kripto derinliği sınırlı |
-| **Cryptofolio** | Self-hosted basit | Açık kaynak | Hafif, kolay kurulum | Sınırlı özellik, bakımsız |
+**Desteklenen exchange'ler:** Binance, Bybit, OKX (3 adet). Rakipler 100–700+ destekliyor.
 
-### CoinHQ'nun Mevcut Konumu
+**Mevcut farklılaştırıcılar:**
+1. Granüler share link (show_* flag'leri, view tracking COIN-3 ile)
+2. Read-only enforced + AES-256 şifreleme
+3. Multi-profil + aggregate görünüm
+4. Self-hosted seçeneği
+5. Tier sistemi (COIN-5: yeni, henüz pazarlanmıyor)
 
-CoinHQ Phase 1 itibarıyla **self-hosted + CEX odaklı + güvenlik öncelikli** bir nişte konumlanıyor. Bu kombinasyon rakiplerin çoğunda tam olarak karşılanmıyor.
+## Findings
 
-**Güçlü Yanlar (şu an):**
-- Granüler paylaşım linkleri (muhasebeci/danışman use-case)
-- Read-only API zorunluluğu + AES-256 şifreleme
-- Multi-profil + aggregate görünüm
-- Self-hosted seçeneği (tam veri kontrolü)
+### 🔴 Kritik — Rekabetçilik Engelleri
 
-**Zayıf Yanlar (şu an):**
-- Yalnızca 3 exchange (Binance, Bybit, OKX) — rakipler 300-700+ destekliyor
-- Mobil uygulama yok
-- On-chain / DeFi desteği yok
-- Vergi raporlaması yok
-- Yalnızca MVP — AI, PnL, alert henüz yok
+**F1 — 3 exchange yetersiz — Coinbase ve Kraken eksik.** Coinbase tek başına ABD kripto kullanıcılarının ~%30'unu kapsar. Bu iki exchange olmadan ABD pazarına giriş fiilen kapalı. Kraken ise Avrupa'da dominant. Güncel kayıp: gelen potansiyel kullanıcıların %30–40'ı ürünü kullanamaz.
 
-**Puan: 4/10** — Diferansiasyon vaadi güçlü ama mevcut özellik seti rakiplerin gerisinde.
+**F2 — Mobil yokluğu 2026'da artık kritik.** CoinStats ve Delta mobil-first. CoinHQ yalnızca web. Mobil crypto kullanımı masaüstünü geçeli 3+ yıl oldu. PWA en hızlı çözüm.
 
----
+**F3 — rotki doğrudan rakip ve daha olgun.** Self-hosted + CEX + gizlilik kombinasyonunda rotki daha derin özellik setine sahip (vergi raporu, on-chain). CoinHQ'nun avantajları: share link, web-first UX, delegated access roadmap'i. Bu 3 özellik pazarlama mesajında öne çıkarılmalı.
 
-## Kritik Eksikler (hemen yapılmalı)
+### 🟡 Önemli — Konumlandırma Sorunları
 
-| # | Sorun | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Sadece 3 exchange — Coinbase, Kraken, KuCoin en sık istenen; kullanıcı kaybı yaratır | High | Phase 2'ye Coinbase + Kraken adaptörü ekle | M |
-| 2 | Diferansiasyon mesajı net değil — rakiplerden ne farkı var, neden tercih edilmeli? | High | "Privacy-first, delegated-control portfolio manager" konumlandırması oluştur | S |
-| 3 | rotki doğrudan rakip: self-hosted + gizlilik + CEX — CoinHQ'dan daha olgun | High | Delegated trading + paylaşım linkleri ön plana çıkar; rotki'de bunlar yok | S |
-| 4 | Mobil uygulama yokluğu — Delta ve CoinStats mobil öncelikli; CoinHQ yalnızca web | Med | PWA kısa vadede; Phase 3-4'te native mobil | L |
+**F4 — Diferansiasyon mesajı README'de yok.** README "multi-user crypto portfolio tracker" diyor. Rakiplerin %95'i de bu tanıma giriyor. "Privacy-first + shareable + delegated access" mesajı hiçbir yerde net biçimde ifade edilmiyor.
 
----
+**F5 — Tier sistemi yeni fırsat ama pazarlanmıyor.** Cloud Free/Premium ayrımı yapılmış ama pricing page link neredeyse hiçbir yerde yok; kullanıcılar ürünü self-hosted ücretsiz sandığı için yanlış beklentiyle geliyor.
 
-## İyileştirme Önerileri (planlı)
+**F6 — Vergi raporlaması eksikliği ciddi kitle dışı bırakıyor.** Koinly ve Blockpit bu segmenti domine ediyor. Basit CSV export bile kullanıcı tabanını genişletir.
 
-| # | Öneri | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | **Exchange adaptör sayısını artır:** Coinbase, Kraken, KuCoin, Gate.io (top 7-8) → kullanım tabanını genişletir | High | Mevcut adapter pattern'ı kullanarak yeni exchange'ler ekle | M per exchange |
-| 2 | **"Delegated Trading" farklılaştırıcısı olarak pazarla:** Hiçbir self-hosted rakip bu kadar granüler izin yönetimi sunmuyor | High | Phase 2 tamamlanınca bu özellik etrafında içerik + PR çalışması | S |
-| 3 | **rotki ile fark yaratan özellikler:** rotki'nin olmadığı: paylaşım linkleri + delegated access + web-first UX — bunları öne çıkar | High | Karşılaştırma landing page'i | M |
-| 4 | **Vergi raporu entegrasyonu (Phase 3+):** Koinly ve Blockpit bu segmenti domine ediyor; basit CSV export bile rekabetçilik katar | Med | PnL tamamlanınca CSV/PDF export + ülke bazlı format | M |
-| 5 | **On-chain cüzdan desteği (okuma):** Zapper/DeBank tamamen on-chain; CoinHQ hybrid yapı sunarsa daha geniş kitleye ulaşır | Med | Public address izleme (API key gerektirmeden) ekle | L |
-| 6 | **PWA (Progressive Web App):** Mobil uygulama olmadan mobil kullanıcı kaybı yaşanır | Med | next.js PWA manifest + service worker | S |
+### 🟢 Güçlü Yanlar
 
----
+**F7 — Share link granülaritesi rakipsiz.** Muhasebeci/danışman use-case için `show_*` flag'leri + view tracking (COIN-3) kombinasyonu hiçbir doğrudan rakipte yok. Ghostfolio'nun partial share özelliği çok daha kısıtlı.
 
-## Kesin Olmalı (Industry Standard)
+**F8 — Privacy-first + cloud hybrid nadir.** rotki self-hosted only; CoinStats cloud-only. CoinHQ her ikisini sunuyor — bu Ghostfolio modeliyle örtüşüyor ama kripto odaklı.
 
-- **En az 8-10 major exchange desteği:** Binance + Bybit + OKX yalnızca ~%55-60 pazar payını kapsıyor; Coinbase, Kraken, KuCoin olmadan kalan %40 kullanıcıya ulaşılamaz
-- **Responsive / mobil-uyumlu frontend:** Tüm rakipler mobil-first; web-only yaklaşım 2026'da rekabetçi değil
-- **Portfolio performans geçmişi (PnL):** Kullanıcıların portföy değişimini zaman içinde görememesi temel eksik — Phase 3 önceliklendirilmeli
-- **Arama ve filtre:** Coin arama, tarih filtresi, exchange filtresi — dashboard temel UX gereklilikleri
+**F9 — COIN-5 tier sistemi yatırımcı/B2B anlatısı için zemin.** "Admin görür kaç kullanıcı premium" metriği toplanıyor. Data-driven monetizasyon için başlangıç noktası.
 
-## Kesin Değişmeli (Mevcut Sorunlar)
+## Feature Matrix
 
-- **"Self-hosted" vurgusu teknik kullanıcı dışını dışlıyor:** README'de kurulum talimatları çok teknik; geniş kitle için cloud seçeneği + kurulum sihirbazı şart
-- **Rakip karşılaştırması yapılmamış:** Ürün hiçbir yerde "neden CoinHQ, neden rotki değil" sorusunu yanıtlamıyor
-- **3 exchange ile MVP çıkmak risk:** İlk 100 kullanıcının önemli kısmı Coinbase veya Kraken kullanıcısı olabilir; onlar için ürün işe yaramaz
+| Özellik | CoinHQ | rotki | Ghostfolio | CoinStats | Delta | Koinly |
+|---------|--------|-------|------------|-----------|-------|--------|
+| Self-hosted | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Cloud SaaS | ✅ ($9/mo) | Kısmi | ✅ ($19/mo) | ✅ | ✅ | ✅ |
+| CEX desteği | 3 | Çok | Sınırlı | 300+ | 200+ | 700+ |
+| Granüler share link | ✅ | ❌ | Kısmi | ❌ | ❌ | ❌ |
+| View tracking | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| DeFi/on-chain | ❌ | ✅ | ❌ | ✅ | ❌ | Kısmi |
+| Delegated trading | Phase 2 | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Vergi raporu | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Mobil app | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
+| AI insight | Phase 4 | ❌ | ❌ | Kısmi | ❌ | ❌ |
+| Açık kaynak | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Fiyat (paid) | $9/mo | Ücretsiz | $19/mo | $3.49/mo | $59.99/yr | $49/yr+ |
 
-## Nice-to-Have (Diferansiasyon)
+## Pricing Benchmark
 
-- **"Social Portfolio" — takip/karşılaştırma:** CoinStats'ın sosyal özellikleri var; CoinHQ da anonim portföy paylaşımını sosyal platforma dönüştürebilir
-- **AI Insight (Phase 4):** Zapper ve DeBank'te olmayan; "şu coin portföyünün %40'ını oluşturuyor, risk yüksek" tarzı uyarılar ciddi diferansiasyon sağlar
-- **Audit-ready paylaşım:** Muhasebeci için read-only + zaman damgalı, imzalı portföy raporu — Koinly benzeri ama daha basit; B2B segment için güçlü kanca
-- **Telegram alert entegrasyonu (Phase 3):** DeBank ve rotki'nin zayıf olduğu bir alan; CoinHQ için düşük maliyetli yüksek değerli özellik
+| Ürün | Ücretsiz Katman | Ücretli Başlangıç | Yıllık |
+|------|-----------------|-------------------|--------|
+| CoinHQ Cloud | 1 profil, 2 exchange | $9/mo | — (yok) |
+| Ghostfolio | Sınırlı | $19/mo | $190/yr |
+| CoinStats | Temel | $3.49/mo | ~$35/yr |
+| Delta | Temel | — | $59.99/yr |
+| Koinly | 25 işlem | $49/yr | $49/yr |
+| rotki | Sınırsız (self) | — | — |
 
----
+**Sonuç:** CoinHQ $9/mo ile orta bant. CoinStats'ın altında ($3.49) ama Ghostfolio'nun ($19) altında. Self-hosted free option = güçlü freemium kanca. Annual plan eksikliği fiyat algısını dezavantajlı kılıyor.
 
-## Rekabet Matrisi — CoinHQ vs Doğrudan Rakipler
+## Türkiye Pazarı Fırsatları
 
-| Özellik | CoinHQ | rotki | Ghostfolio | CoinStats |
-|---------|--------|-------|------------|-----------|
-| Self-hosted | ✅ | ✅ | ✅ | ❌ |
-| Cloud SaaS | Planlanıyor | Kısmi | ✅ ($19/ay) | ✅ |
-| CEX desteği | 3 | Çok | Sınırlı | 300+ |
-| DeFi/on-chain | ❌ | ✅ | ❌ | ✅ |
-| Delegated trading | Phase 2 | ❌ | ❌ | ❌ |
-| Paylaşım linkleri | ✅ (granüler) | ❌ | Kısmi | ❌ |
-| Vergi raporu | ❌ | ✅ | ❌ | ❌ |
-| Mobil | ❌ | ❌ | ❌ | ✅ |
-| AI insight | Phase 4 | ❌ | ❌ | Kısmi |
-| Fiyat | Ücretsiz (self-h.) | Ücretsiz | Ücretsiz/$19 | $3.49/ay+ |
+- Türkiye global kripto sahipliği oranında top 10 ülke (~%20+ nüfus etkileşimi)
+- Yerel rakip yok: Türkçe arayüzlü, TR borsalarını (ICRYPEX, BtcTurk, Paribu) destekleyen portfolio tracker mevcut değil
+- **CoinHQ için hızlı kazanç:** TR lokalizasyonu (Türkçe UI) + BtcTurk/Paribu adapter = Türkiye'de rakipsiz niche
+- Regülasyon: MASAK uyumlu kripto raporlama giderek zorunlu → vergi raporu özelliği TR'de muhasebeci B2B pazarı açar
+- PPP fiyatlandırma şart: $9/mo → ~290 TRY; ~150 TRY/mo TR fiyatı çok daha uygun
 
-**Sonuç:** CoinHQ'nun en net farkı = **Delegated Trading + Granüler Paylaşım + Self-hosted + Modern Web UX**. Bu kombinasyona sahip başka bir araç yok. Odak bu 3-4 özellikte tutulmalı, rakiplerin her özelliğini kopyalamaya çalışılmamalı.
+## Moat Değerlendirmesi
+
+| Moat Kaynağı | Güç | Neden |
+|--------------|-----|-------|
+| Share link virality | Orta | Görüntüleyiciler CoinHQ markasını görüyor ama kayıt yok → viral loop zayıf |
+| Privacy / read-only | Güçlü | Kurumsal güven için kritik; rotki dışında rakipler bunu vurgulamıyor |
+| Open source | Orta | Topluluk büyütür ama fork riski var (Ghostfolio'dan öğren) |
+| Delegated trading (Phase 2) | Potansiyel güçlü | Hiçbir rakipte yok; fon yöneticisi nişi için gerçek moat |
+| TR lokalizasyonu | Potansiyel güçlü | Erken girişimci avantajı; yapılırsa 1–2 yıl rakipsiz |
+
+## Action Items
+
+| Öncelik | İş | Etki | Efor |
+|---------|-----|------|------|
+| P0 | Coinbase + Kraken adapter ekle | Yüksek | M per exchange |
+| P0 | README + landing page'de diferansiasyon mesajı netleştir | Yüksek | S |
+| P1 | rotki karşılaştırma sayfası | Yüksek | S |
+| P1 | PWA manifest + service worker | Orta | S |
+| P1 | TR lokalizasyonu: Türkçe UI + BtcTurk/Paribu adapter | Yüksek | M |
+| P1 | Share link viral loop güçlendir: "Create your own" CTA | Orta | S |
+| P2 | CSV export (vergi raporu başlangıcı) | Orta | M |
+| P2 | On-chain wallet tracking (public address) | Orta | L |
+| P3 | MASAK-uyumlu vergi raporu format | Orta | L |
+
+## References
+
+- `README.md` — mevcut ürün konumlandırması
+- `frontend/src/app/pricing/page.tsx` — 3-plan pricing UI
+- `backend/app/core/limits.py` — tier gate definitions
+- `backend/app/models/user.py` — `UserTier` enum
+- `analysis/archive_2026-04-06/12_competitive_analysis.md` — önceki rekabet matrisi

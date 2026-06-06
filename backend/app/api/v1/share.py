@@ -4,23 +4,38 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.exchange_key import ExchangeKey
+from app.models.followed_portfolio import FollowedPortfolio
 from app.models.profile import Profile
 from app.models.share_link import ShareLink
 from app.models.user import User
 from app.schemas.share_link import (
+    FollowedPortfolioResponse,
     SharedAsset,
     SharedExchange,
     SharedPortfolioView,
     ShareLinkCreate,
     ShareLinkResponse,
+    ShareLinkUpdate,
 )
+from app.schemas.trade import TradeOrderRequest, TradeOrderResponse
 from app.services.portfolio_service import get_portfolio
+from app.services.trade_service import execute_trade, spent_today_usd
+
+
+async def _profile_has_trade_key(db: AsyncSession, profile_id: int) -> bool:
+    result = await db.execute(
+        select(ExchangeKey.id).where(
+            ExchangeKey.profile_id == profile_id,
+            ExchangeKey.key_type == "trade",
+        )
+    )
+    return result.first() is not None
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(tags=["share"])
@@ -38,6 +53,12 @@ async def create_share_link(
     if not profile or profile.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Profile not found")
 
+    if payload.can_trade and not await _profile_has_trade_key(db, payload.profile_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Add a trade key to this profile before enabling trading on a share link.",
+        )
+
     link = ShareLink(
         profile_id=payload.profile_id,
         token=ShareLink.generate_token(),
@@ -47,8 +68,43 @@ async def create_share_link(
         show_allocation_pct=payload.show_allocation_pct,
         expires_at=payload.expires_at,
         label=payload.label,
+        allow_follow=payload.allow_follow,
+        can_trade=payload.can_trade,
+        trade_direction=payload.trade_direction,
+        trade_allowed_coins=payload.trade_allowed_coins,
+        trade_max_per_order_usd=payload.trade_max_per_order_usd,
+        trade_daily_limit_usd=payload.trade_daily_limit_usd,
     )
     db.add(link)
+    await db.commit()
+    await db.refresh(link)
+    return link
+
+
+@router.patch("/share/{link_id}", response_model=ShareLinkResponse)
+async def update_share_link(
+    link_id: int,
+    payload: ShareLinkUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update permissions/trade limits on an existing link. Changes apply
+    immediately to the link holder (the public view reads live from the DB)."""
+    link = await db.get(ShareLink, link_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    profile = await db.get(Profile, link.profile_id)
+    if not profile or profile.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Share link not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    if data.get("can_trade") and not await _profile_has_trade_key(db, link.profile_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Add a trade key to this profile before enabling trading on a share link.",
+        )
+    for field, value in data.items():
+        setattr(link, field, value)
     await db.commit()
     await db.refresh(link)
     return link
@@ -80,7 +136,6 @@ async def revoke_share_link(
     if not link:
         raise HTTPException(status_code=404, detail="Share link not found")
 
-    # Ownership check via profile
     profile = await db.get(Profile, link.profile_id)
     if not profile or profile.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Share link not found")
@@ -89,10 +144,75 @@ async def revoke_share_link(
     await db.commit()
 
 
+# ── Follow endpoints ─────────────────────────────────────────────────────────
+
+@router.post("/followed/{token}", response_model=FollowedPortfolioResponse, status_code=status.HTTP_201_CREATED)
+async def follow_portfolio(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add a shared portfolio to the current user's followed list."""
+    result = await db.execute(
+        select(ShareLink).where(ShareLink.token == token, ShareLink.is_active == True)  # noqa: E712
+    )
+    link = result.scalar_one_or_none()
+    if not link:
+        raise HTTPException(status_code=404, detail="Share link not found or revoked")
+    if not link.allow_follow:
+        raise HTTPException(status_code=403, detail="This portfolio does not allow following")
+
+    # Idempotent — return existing if already followed
+    existing = await db.execute(
+        select(FollowedPortfolio).where(
+            FollowedPortfolio.user_id == current_user.id,
+            FollowedPortfolio.token == token,
+        )
+    )
+    followed = existing.scalar_one_or_none()
+    if followed:
+        return followed
+
+    followed = FollowedPortfolio(
+        user_id=current_user.id,
+        token=token,
+        label=link.label,
+    )
+    db.add(followed)
+    await db.commit()
+    await db.refresh(followed)
+    return followed
+
+
+@router.get("/followed", response_model=list[FollowedPortfolioResponse])
+async def list_followed(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(FollowedPortfolio)
+        .where(FollowedPortfolio.user_id == current_user.id)
+        .order_by(FollowedPortfolio.followed_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.delete("/followed/{followed_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unfollow_portfolio(
+    followed_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    followed = await db.get(FollowedPortfolio, followed_id)
+    if not followed or followed.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Not found")
+    await db.delete(followed)
+    await db.commit()
+
+
 # ── Public endpoint (no auth, rate-limited) ─────────────────────────────────
 
 def _mask_exchange(name: str) -> str:
-    """Return a stable but irreversible alias for an exchange name."""
     digest = hashlib.sha256(name.encode()).hexdigest()[:8]
     return f"Exchange {digest}"
 
@@ -112,11 +232,7 @@ async def public_share_view(
     if not link:
         raise HTTPException(status_code=404, detail="Link not found or has been revoked")
 
-    # Track view
-    link.view_count += 1
-    link.last_viewed_at = datetime.now(UTC)
-    await db.commit()
-
+    # Check expiry BEFORE incrementing view count
     if link.expires_at is not None:
         now = datetime.now(UTC)
         exp = link.expires_at
@@ -125,22 +241,29 @@ async def public_share_view(
         if now > exp:
             raise HTTPException(status_code=410, detail="This link has expired")
 
-    # Fetch portfolio data
+    # Atomic view count increment (avoids race condition with concurrent requests)
+    await db.execute(
+        update(ShareLink)
+        .where(ShareLink.id == link.id)
+        .values(view_count=ShareLink.view_count + 1, last_viewed_at=datetime.now(UTC))
+    )
+    await db.commit()
+
+    profile = await db.get(Profile, link.profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile no longer exists")
+
     keys_result = await db.execute(
         select(ExchangeKey).where(ExchangeKey.profile_id == link.profile_id)
     )
     keys = keys_result.scalars().all()
 
-    profile = await db.get(Profile, link.profile_id)
-    portfolio = await get_portfolio(link.profile_id, profile.name if profile else "", keys)
+    portfolio = await get_portfolio(link.profile_id, profile.name, keys)
 
-    # Build filtered view
     grand_total = portfolio.total_usd
-
     filtered_exchanges: list[SharedExchange] = []
     for ex in portfolio.exchanges:
         exchange_label = ex.exchange if link.show_exchange_names else _mask_exchange(ex.exchange)
-
         assets: list[SharedAsset] = []
         for bal in ex.balances:
             if bal.total == 0:
@@ -148,25 +271,95 @@ async def public_share_view(
             alloc_pct: float | None = None
             if link.show_allocation_pct and grand_total and grand_total > 0:
                 alloc_pct = round((bal.usd_value or 0) / grand_total * 100, 2)
-
             assets.append(SharedAsset(
                 asset=bal.asset,
                 amount=bal.total if link.show_coin_amounts else None,
-                usd_value=bal.usd_value,
+                usd_value=bal.usd_value if link.show_total_value else None,
                 allocation_pct=alloc_pct,
             ))
-
         filtered_exchanges.append(SharedExchange(
             exchange_name=exchange_label,
             assets=assets,
-            total_usd=ex.total_usd,
+            total_usd=ex.total_usd if link.show_total_value else None,
         ))
 
+    # Use link label if set, otherwise return generic name to protect profile privacy
+    public_display_name = link.label or "Crypto Portfolio"
+
+    # Trade context — a delegate authorized to trade must know which exchanges
+    # are tradable (real names), so these are surfaced only when can_trade is on.
+    tradable_exchanges: list[str] = []
+    trade_spent_today = 0.0
+    if link.can_trade:
+        tk_result = await db.execute(
+            select(ExchangeKey.exchange).where(
+                ExchangeKey.profile_id == link.profile_id,
+                ExchangeKey.key_type == "trade",
+            )
+        )
+        tradable_exchanges = sorted({e for e in tk_result.scalars().all()})
+        trade_spent_today = await spent_today_usd(db, link.id)
+
     return SharedPortfolioView(
+        token=token,
+        profile_name=public_display_name,
         total_usd=portfolio.total_usd if link.show_total_value else None,
         exchanges=filtered_exchanges,
         show_total_value=link.show_total_value,
         show_coin_amounts=link.show_coin_amounts,
         show_exchange_names=link.show_exchange_names,
         show_allocation_pct=link.show_allocation_pct,
+        allow_follow=link.allow_follow,
+        can_trade=link.can_trade,
+        trade_direction=link.trade_direction,
+        trade_allowed_coins=link.trade_allowed_coins,
+        trade_max_per_order_usd=link.trade_max_per_order_usd,
+        trade_daily_limit_usd=link.trade_daily_limit_usd,
+        trade_spent_today_usd=trade_spent_today,
+        tradable_exchanges=tradable_exchanges,
+    )
+
+
+# ── Delegated trade (no auth — authorized via share token) ───────────────────
+
+@router.post("/public/share/{token}/trade", response_model=TradeOrderResponse)
+@limiter.limit("10/minute")
+async def delegate_trade(
+    request: Request,
+    token: str,
+    payload: TradeOrderRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ShareLink).where(ShareLink.token == token, ShareLink.is_active == True)  # noqa: E712
+    )
+    link = result.scalar_one_or_none()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found or has been revoked")
+
+    if link.expires_at is not None:
+        exp = link.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=UTC)
+        if datetime.now(UTC) > exp:
+            raise HTTPException(status_code=410, detail="This link has expired")
+
+    if not link.can_trade:
+        raise HTTPException(status_code=403, detail="This share link is not permitted to trade.")
+
+    profile = await db.get(Profile, link.profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile no longer exists")
+
+    http_client = getattr(request.app.state, "http_client", None)
+    return await execute_trade(
+        db,
+        profile=profile,
+        exchange=payload.exchange,
+        side=payload.side,
+        base_asset=payload.asset,
+        usd_amount=payload.usd_amount,
+        actor="delegate",
+        share_link=link,
+        http_client=http_client,
     )

@@ -1,76 +1,79 @@
-## UI/UX & Design Analiz Raporu
-> Lead: ArtLead (A9) | Model: Sonnet 4.6
+# UI/UX Design Analysis — CoinHQ
+_Date: 2026-04-10 · Lead: ArtLead (A9) · Model: Sonnet 4.6_
 
-### Mevcut Durum
+## Delta vs 2026-04-06
 
-**Güçlü yanlar:**
-- Dark mode-first yaklaşım tutarlı biçimde uygulanmış (`bg-gray-950`, `bg-gray-900`, `border-gray-800` hiyerarşisi)
-- Tailwind CSS kullanımı standart ve tutarlı — spacing, border-radius, font-weight düzgün
-- `rounded-xl` / `rounded-2xl` kartlar ve `border border-gray-800` çerçeveler görsel hiyerarşiyi kuruyor
-- ProfileSwitcher'da pill-button pattern aktif/pasif state için `bg-blue-600` vs `bg-gray-800` ile net
-- AllocationChart'ta Recharts ile çalışan pie chart var, dark tooltip özelleştirilmiş
-- SharePage'de "Read-only portfolio view" badge'i UX açısından doğru bağlam kurmuş
-- Inter font seçimi okunabilirlik için uygun
-- Share sayfasında tablo layout'u verinin yapısına uygun
-- Responsive grid: `grid-cols-1 lg:grid-cols-2` var
+| Item | April 6 | April 10 | Status |
+|------|---------|----------|--------|
+| Login page | Basic | Redesigned with branding | ✅ |
+| `SkeletonCard` loading states | Missing | Component added | ✅ |
+| Navigation bar | Inconsistent | Unified across pages | ✅ |
+| `ConfirmModal` (replaces browser `confirm()`) | Missing | Custom modal with a11y | ✅ |
+| Design tokens in `tailwind.config.ts` | None | `brand`/`surface`/`border` defined | ⚠️ Defined but not adopted |
+| `AllocationChart` "Others" grouping | Missing | Implemented | ✅ |
+| `UpgradeBanner` (COIN-5) | N/A | Added | ✅ |
+| Cached data indicator | Missing | Added | ✅ |
+| `OnboardingWizard` a11y | N/A | No `role="dialog"`, no focus trap | 🔴 |
+| Pricing `#waitlist` dead anchor | N/A | Still broken | 🔴 |
 
-**Puan: 4.5/10**
+**Score: 4/10 → 6/10**
 
----
+## Current State
 
-### Kritik Eksikler (hemen yapılmalı)
+Login (`frontend/src/app/login/page.tsx`), dashboard, settings, and share view all share a consistent dark theme with the unified navigation component. `SkeletonCard` component handles loading states gracefully across the dashboard.
 
-| # | Sorun | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Login sayfası yok — `/dashboard`'a redirect direkt yapılıyor, unauthenticated kullanıcı için UI tasarımı eksik | High | `/login` sayfası oluştur; Google OAuth butonu, CoinHQ logo ve kısa tagline ile | M |
-| 2 | Loading state primitif — "Loading portfolio..." plain text; spinner veya skeleton yok | High | Skeleton card component ekle (PortfolioSummary, ExchangeList için) | S |
-| 3 | Design token sistemi yok — Tailwind `theme.extend` tamamen boş; renk/spacing sözlüğü raw class'larla inline yazılmış | High | `tailwind.config.ts`'de custom color palette tanımla: `brand`, `surface`, `border` token'ları | M |
-| 4 | Navigation component yok — dashboard/settings arası sadece `<Link>` metni; aktif sayfa belli değil | High | Minimal sidebar veya top navbar ekle; aktif route için highlight | M |
-| 5 | `confirm()` ile native browser dialog kullanılıyor (delete profile, delete key, revoke link) — modern UX değil | Med | Custom confirmation modal component yaz | S |
+`tailwind.config.ts` defines semantic tokens (`brand`, `surface`, `border`) but components still use raw Tailwind utilities like `bg-gray-900`, `border-gray-800`. The token layer is decorative only.
 
----
+`OnboardingWizard.tsx` is a 3-step modal (profile → exchange → share) triggered via `localStorage['onboarding_done']`. It lacks `role="dialog"`, `aria-modal="true"`, focus trap, and ESC key handling — unlike `ConfirmModal.tsx` which implements these correctly.
 
-### İyileştirme Önerileri (planlı)
+Pricing page (`frontend/src/app/pricing/page.tsx`) has a "Join waitlist" CTA linked to `#waitlist` anchor that doesn't exist on the page. Silent click failure.
 
-| # | Öneri | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Dashboard'da "cached" indicator gösterilmiyor — API'den `cached: boolean` geliyor ama UI'da hiç kullanılmıyor | Med | PortfolioSummary'ye "Cached · 60s ago" badge ekle | S |
-| 2 | ExchangeList'te top 5 asset limiti hardcode — kullanıcı tüm asset'leri göremez | Med | "Show all" toggle veya expandable row | S |
-| 3 | Portfolio value'nun 24s değişimi (%) yok — tek bir statik sayı gösteriliyor | High | Backend'den 24h change eklenince UI'a yüzdesel değişim + renk (yeşil/kırmızı) ekle | M |
-| 4 | AllocationChart'ta "Others" gruplama yok — 8 asset'ten fazlası sessizce kesilir | Med | 7+ asset varsa son dilimi "Others (N)" olarak birleştir | S |
-| 5 | Share link listesinde oluşturulma tarihi gösterilmiyor; hangi profil için olduğu etiketlenmiyor | Med | Link card'ına `profile_id → profile name` çözümle, `created_at` göster | S |
-| 6 | Mobile'da ProfileSwitcher pill'leri overflow'da horizontal scroll yok — `flex-wrap` ile kırılıyor ama okunaksız olabilir | Med | `overflow-x-auto` ile yatay scroll, `flex-nowrap` | S |
-| 7 | Settings sayfasında API key ekleme tarihi dışında hiçbir key metadata yok (exchange logo, status) | Low | Exchange logo/icon (SVG) ve "Last used" opsiyonu | M |
+## Findings
 
----
+### 🔴 Critical
 
-### Kesin Olmalı (industry standard)
+**F1 — OnboardingWizard missing ARIA dialog attributes and focus trap**
+`frontend/src/components/OnboardingWizard.tsx` — No `role="dialog"`, `aria-modal`, focus trap, or ESC key support. Screen reader users cannot detect the modal. Keyboard users can tab out. Compare with `ConfirmModal.tsx` which is correctly built with focus trap hook. Fix: port the ConfirmModal a11y pattern to OnboardingWizard.
 
-- **Login sayfası:** Unauthenticated → redirect to `/login`; authenticated → redirect to `/dashboard`
-- **Favicon ve OG meta:** `layout.tsx`'de sadece `<title>` ve `<description>` var; `og:image`, `og:type`, favicon eksik
-- **Loading/error/empty state üçlüsü:** Her data bölümü için üç durum ayrı tasarlanmalı — şu an bazı yerlerde eksik
-- **Tooltip accessibility:** AllocationChart'ta Recharts tooltip'ine `role="tooltip"` ve keyboard focus gerekmez ama en azından içerik okunabilir olmalı
-- **Form validation feedback:** AddProfileModal'da sadece submit hatası var; boş submit engellenmiş ama karakter limiti gösterilmiyor
-- **Consistent empty states:** Bazı yerlerde icon + açıklama + CTA var, bazı yerlerde sadece plain text
+**F2 — Design tokens defined but not adopted**
+`frontend/tailwind.config.ts` — `brand`, `surface`, `border` tokens declared but all components use raw `bg-gray-900`, `border-gray-800`, `text-gray-100` etc. Theme changes (white-label, dark/light toggle, future branding update) require touching every component. Fix: systematic codemod to replace raw grays with semantic tokens.
 
----
+**F3 — Pricing page `#waitlist` CTA goes nowhere**
+`frontend/src/app/pricing/page.tsx:28` — Premium plan button links to `#waitlist` anchor but no element with `id="waitlist"` exists. Click = silent failure at the monetization funnel exit point. Fix: implement a form, waitlist modal, or redirect to Stripe.
 
-### Kesin Değişmeli (mevcut sorunlar)
+### 🟡 Important
 
-- `confirm()` native browser dialog → custom modal
-- Dashboard header: "CoinHQ" h1 başlığı basit metin — logo veya wordmark olmalı
-- Tailwind `theme.extend: {}` boş bırakılmış → design token'lar mutlaka tanımlanmalı, yoksa her bileşen kendi renk kararını veriyor (gray-800 vs gray-850 tutarsızlık riski)
-- Settings'de `← Dashboard` link'i stilsiz, küçük ve dikkat çekmiyor
-- ProfileSwitcher ve ShareLinkManager'da ayrı ayrı "profile filter" UI var — iki yerde duplicate pattern
+**F4 — No dark/light mode toggle** — App is dark-only. Mobile users in bright environments struggle. `next-themes` is a ~30-min integration.
 
----
+**F5 — Mobile responsive gaps** — Settings page key list overflows on <375px viewports; `ShareLinkManager` copy button hit area too small for thumb navigation.
 
-### Nice-to-Have (diferansiasyon)
+**F6 — Color contrast on secondary text** — `text-gray-500` on `bg-gray-900` fails WCAG AA (contrast ratio ~3.9:1, requirement: 4.5:1). Affects placeholder text, descriptions, timestamps.
 
-- Portfolio value'da animasyonlu sayaç (`countUp` library)
-- Dark/light mode toggle (şu an `dark` class hardcode)
-- Drag-to-reorder profiles
-- Donut chart yerine treemap (daha fazla coin için daha okunabilir)
-- Share sayfasında "Powered by CoinHQ" CTA — growth lever
-- Dashboard'da "Last synced" live timer
-- Keyboard shortcut'lar: `Cmd+K` command palette, sayısal tuşlarla profil geçişi
+**F7 — Upgrade prompt placement too narrow** — `UpgradeBanner` only appears in settings after a 403 error. Users who never hit the limit never see a conversion surface.
+
+### 🟢 Good
+
+**F8 — `ConfirmModal` correctly implements a11y patterns.** Focus trap hook, `role="dialog"`, `aria-modal`, ESC close. Can be reused as template for all new modals.
+
+**F9 — `AllocationChart` "Others" grouping.** Prevents chart clutter when user holds 20+ tokens.
+
+**F10 — `SkeletonCard` loading states.** Provides perceived performance improvement across dashboard.
+
+## Action Items
+
+| # | P | Fix | File | Effort |
+|---|---|-----|------|--------|
+| 1 | 🔴 | OnboardingWizard ARIA + focus trap | `components/OnboardingWizard.tsx` | S |
+| 2 | 🔴 | Pricing `#waitlist` — live form or Stripe link | `app/pricing/page.tsx` | S |
+| 3 | 🔴 | Adopt design tokens across components | codemod `frontend/src/` | M |
+| 4 | 🟡 | `next-themes` light/dark toggle | app layout | S |
+| 5 | 🟡 | Mobile responsive fixes (<375px) | settings, `ShareLinkManager.tsx` | S |
+| 6 | 🟡 | Secondary text contrast fix | design tokens | XS |
+| 7 | 🟡 | Upgrade prompt → dashboard + onboarding end | `dashboard/page.tsx`, `OnboardingWizard.tsx` | S |
+| 8 | 🟢 | Empty state consistency audit | dashboard views | S |
+
+## References
+- `frontend/src/components/OnboardingWizard.tsx`, `ConfirmModal.tsx`, `UpgradeBanner.tsx`, `SkeletonCard.tsx`
+- `frontend/tailwind.config.ts`
+- `frontend/src/app/pricing/page.tsx`
+- `analysis/archive_2026-04-06/01_ui_ux_design.md`

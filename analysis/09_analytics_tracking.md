@@ -1,91 +1,88 @@
-## #9 Analytics & Tracking Analiz Raporu
-> Lead: GrowthLead (A11) | Model: Sonnet 4.6
+# Analytics & Tracking Analysis — CoinHQ
+_Date: 2026-04-10 · Lead: GrowthLead (A11) · Model: Sonnet 4.6_
 
----
+## Delta vs 2026-04-06
 
-### Bağlam Notu
+| Item | April 6 | April 10 | Status |
+|------|---------|----------|--------|
+| Frontend analytics (Plausible) | Yoktu | Env-gated script + `analytics.ts` util | ✅ |
+| Share link `view_count` | Yoktu | Backend model + API + frontend display | ✅ |
+| Frontend error tracking (Sentry) | Yoktu | Env-gated `sentry.ts` + `ErrorBoundaryWrapper` | ✅ |
+| Key action events (exchange, share, profile) | Yoktu | `events.exchangeConnected`, `shareLinkCopied`, `profileCreated` | ✅ |
+| Admin stats endpoint | Yoktu | `/api/v1/admin/stats` — users/profiles/keys/tiers/exchanges | ✅ |
+| `shareLinkViewed` event called on share page | — | Defined in `analytics.ts` but **never called** | 🔴 |
+| Onboarding funnel events | — | Missing | 🔴 |
+| Upgrade conversion events | — | Missing | 🔴 |
+| Backend structured logging | Yoktu | Hâlâ yok | 🟡 |
+| Admin frontend UI | Yoktu | Hâlâ yok (API-only) | 🟡 |
 
-CoinHQ self-hosted bir uygulama. Bu, third-party analytics araçlarının entegrasyonunda kullanıcı onayı (GDPR/KVKK) ve veri egemenliği konularının önem kazandığı anlamına gelir. Self-hosted kullanıcılar genellikle gizlilik odaklıdır; bu yüzden Plausible veya Umami gibi privacy-first araçlar GA'ya göre daha uygun olabilir.
+**Score: 1/10 → 5/10**
 
----
+## Current State
 
-### Mevcut Durum
+**Plausible integration:** `frontend/src/app/layout.tsx:35–40` — `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` env var varsa Next.js `<Script defer>` ile Plausible script yükleniyor. Env yoksa script yüklenmiyor — self-hosted için doğru tasarım.
 
-**Yapılmış olanlar:**
-- Hiçbir analytics/tracking kodu yok
-- Backend'de `cached: boolean` alanı response'da mevcut — teknik monitoring için temel var
-- Rate limiting (`slowapi`) — dolaylı olarak trafik anomalilerini yakalar
+**Analytics util:** `frontend/src/lib/analytics.ts:1–12` — `trackEvent()` wrapper tanımlanmış. `events` nesnesi: `exchangeConnected`, `shareLinkCopied`, `profileCreated`, `shareLinkViewed`. Plausible `window.plausible` objesi üzerinden çalışıyor.
 
-**Eksik olanlar:**
-- Sayfa görüntüleme, tıklama, funnel takibi
-- Kullanıcı aktivasyon/retansiyon metrikleri
-- Hata izleme (error tracking)
-- Performance monitoring
-- Share link tıklama takibi
-- Backend API log metrikleri
+**Event usage:** `analytics.ts` eventi kullanan yerler:
+- `ShareLinkManager.tsx:62` → `events.shareLinkCopied()`
+- `AddProfileModal.tsx:35` → `events.profileCreated()`
+- `AddKeyModal.tsx:114` → `events.exchangeConnected(exchange)`
+- `shareLinkViewed` → **tanımlanmış ama hiçbir yerde çağrılmıyor**
 
-**Puan: 1/10**
+**Sentry:** `frontend/src/lib/sentry.ts` — `NEXT_PUBLIC_SENTRY_DSN` yoksa yüklenmez (dynamic import). `captureError()` fonksiyonu `@sentry/nextjs`'i lazy load ediyor. `ErrorBoundaryWrapper` (`lib/error-boundary-wrapper.tsx`) ile entegre.
 
-Sıfırdan başlanıyor — tek pozitif nokta, temiz bir slate olması.
+**Backend admin stats:** `backend/app/api/v1/admin.py:20–49` — `/admin/stats` endpoint'i: user count, profile count, active share links, exchange key count, exchange distribution (per-exchange), tier distribution (free/pro/admin). Admin tier kontrolü var.
 
----
+**View count:** `backend/app/models/share_link.py:25–26` — `view_count: Mapped[int]`, `last_viewed_at: Mapped[datetime | None]`. Backend `public.py:195` — `view_count = view_count + 1` + `last_viewed_at = now()` atomic update. `ShareLinkManager.tsx:162–166` — frontend'de gösteriliyor.
 
-### Kritik Eksikler (hemen yapılmalı)
+## Findings
 
-| # | Sorun | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Frontend'de hiç analytics yok | High | Privacy-first çözüm ekle: Plausible veya Umami (self-hosted) — script tag yeterli | S |
-| 2 | Share link görüntüleme sayısı takip edilmiyor | High | Backend'e share_links tablosuna `view_count` ve `last_viewed_at` ekle | S |
-| 3 | Frontend hata takibi yok | High | Sentry (veya self-hosted Glitchtip) — Next.js entegrasyonu 30 dakika | M |
-| 4 | Kullanıcı aktivasyon hunisi görünmüyor | Med | Exchange ekleme, share link oluşturma eventlerini logla (backend audit log) | M |
+### 🔴 Critical
 
----
+**F1 — `shareLinkViewed` eventi tanımlı ama asla çağrılmıyor**
+`frontend/src/lib/analytics.ts:11` — `shareLinkViewed: (token: string) => trackEvent('Share Link Viewed')` tanımlanmış. Ancak `share/[token]/page.tsx`'te hiçbir yerde kullanılmıyor. Share sayfası SSR — event'i client tarafında tetiklemek için `useEffect` ile bir client component gerekli. Bu eksik olduğu için Plausible dashboard'da share link görüntüleme sayısı görünmüyor; sadece DB'deki `view_count` var. Fix: Share page'e küçük bir `<SharePageTracker token={token} />` client component ekle.
 
-### İyileştirme Önerileri (planlı)
+**F2 — Upgrade impression ve click conversion tracking yok**
+`frontend/src/components/UpgradeBanner.tsx` — `UpgradeBanner` gösterilince ve "Upgrade" butonuna tıklanınca hiç event yok. Kaç kullanıcının banner gördüğü, kaçının tıkladığı bilinmiyor. Bu, tier upgrade funnel'ının temel metriği. Fix: `useEffect(() => trackEvent('Upgrade Banner Shown'), [])` ve button `onClick`'e `trackEvent('Upgrade Clicked')` ekle.
 
-| # | Öneri | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Backend yapısal loglama | High | FastAPI'ye structlog ekle — JSON formatında request/response logları; exchange bazlı hata oranı takibi | M |
-| 2 | Custom event tracking | Med | Share link kopyalama, profil ekleme, exchange bağlantısı gibi key action'ları Plausible custom event olarak gönder | M |
-| 3 | Portfolio yükleme süresi metrikleri | Med | Exchange API response sürelerini backend'de logla — hangi exchange yavaş? | M |
-| 4 | Admin panel / basit dashboard | Med | Kayıtlı kullanıcı sayısı, aktif share link sayısı, exchange dağılımı — bile basit bir `/admin/stats` endpoint | M |
-| 5 | Health check endpoint metrikleri | Low | `/health` endpoint'ini genişlet — Redis durumu, DB bağlantısı, son exchange API başarı oranı | S |
-| 6 | Uptime monitoring | Low | Self-hosted: Uptime Kuma — docker-compose'a eklenebilir | S |
+**F3 — Onboarding funnel tamamen kör**
+`frontend/src/components/OnboardingWizard.tsx` — `handleComplete()` ve "Skip setup" click'i için event yok. Adım geçişleri (`step → step+1`) de takip edilmiyor. "Kaç kullanıcı onboarding'i tamamlıyor?" sorusu yanıtsız. Fix: her adım geçişinde `trackEvent('Onboarding Step', { step: step + 1 })`, tamamlanınca `trackEvent('Onboarding Completed')`, skip'te `trackEvent('Onboarding Skipped', { at_step: step })`.
 
----
+### 🟡 Medium
 
-### Kesin Olmalı (industry standard)
-- Temel sayfa görüntüleme takibi (Plausible/Umami — privacy-first, self-host edilebilir)
-- Frontend hata izleme (Sentry veya Glitchtip)
-- Yapısal backend loglama (JSON logları)
-- Share link view_count — en kritik ürün metriği
+**F4 — Admin stats'ta `total_view_count` yok**
+`backend/app/api/v1/admin.py:26–48` — Endpoint user/profile/key sayılarını, tier dağılımını ve exchange dağılımını veriyor ama toplam share link görüntüleme sayısını (`SUM(view_count)`) vermiyor. Bu, ürünün viral reach'ini gösteren en önemli agregat metrik. Fix: `total_views = await db.scalar(select(func.sum(ShareLink.view_count)))` ekle.
 
-### Kesin Değişmeli (mevcut sorunlar)
-- Kör uçuş: hangi sayfanın, özelliğin kullanıldığı bilinmiyor
-- Exchange API başarısızlıkları sessizce geçiyor — kullanıcı kaybediliyor
-- Share link etkisi ölçülemiyor — viral loop'un çalışıp çalışmadığı bilinmiyor
+**F5 — Backend yapısal loglama yok**
+FastAPI backend'de `structlog` veya JSON loglama yok. Exchange API hataları (`ExchangeList.tsx`, backend adapter) sessizce geçebiliyor. Hangi exchange'in hata verdiği, hangi kullanıcının etkilendiği bilinemez. Monitoring'in Sentry dışında backend logu da olmalı.
 
-### Nice-to-Have (diferansiasyon)
-- Self-hosted Metabase/Grafana ile ürün metrikleri dashboard'u
-- Exchange API latency breakdown — Binance/Bybit/OKX karşılaştırmalı
-- Cohort analizi: hangi ay kaydolan kullanıcılar portföy ekliyor?
-- A/B test altyapısı — share link CTA metni optimizasyonu için
+**F6 — Sentry sadece frontend, backend'de yok**
+`frontend/src/lib/sentry.ts` — Sentry yalnızca Next.js tarafında. FastAPI backend'de Sentry SDK (`sentry-sdk[fastapi]`) entegre değil. Backend exception'ları Sentry'de görünmüyor.
 
----
+**F7 — Admin stats için frontend UI yok**
+`/admin/stats` endpoint var ama bunu görselleştiren bir sayfa yok. Admin kullanıcısı curl veya Postman kullanmak zorunda. En basit hâliyle bile bir `/admin` Next.js sayfası deployment'ı kolaylaştırır.
 
-### Öneri: Self-Hosted Analytics Stack
+### 🟢 Good
 
-Self-hosted kullanıcılara önerilecek stack:
+**F8 — Analytics env-gated: self-hosted kullanıcılar etkilenmiyor**
+`layout.tsx:35` ve `sentry.ts:3` — Her iki tracking sistemi de env var yoksa tamamen devre dışı. Bundle'a extra kod eklemiyor. Privacy-first self-hosted kullanıcılar için doğru yaklaşım.
 
-```
-Plausible Analytics (privacy-first) → sayfa görüntüleme, custom events
-Glitchtip (Sentry alternatifi) → hata takibi
-Uptime Kuma → uptime monitoring
-Grafana + Loki → backend log görselleştirme (Phase 3+)
-```
+**F9 — `view_count` atomic update**
+`backend/app/api/public.py:195` — `values(view_count=ShareLink.view_count + 1)` SQL atomic update. Race condition riski yok.
 
-Hepsi Docker ile deploy edilebilir — CoinHQ'nun docker-compose.yml'ine ek servis olarak eklenebilir.
+**F10 — Exchange bazlı granüler admin stats**
+`admin.py:34–36` — `GROUP BY ExchangeKey.exchange` ile hangi exchange'in en çok kullanıldığı görülüyor. Tier breakdown (`admin.py:38–40`) da eklendi (COIN-5). Bu ürün kararları için değerli.
 
----
+## Action Items
 
-> **Not:** Analytics olmadan hangi özelliğin işe yaradığı bilinmez. MVP bitse bile en az Plausible + share link view_count mutlaka eklenmeli — aksi hâlde Phase 2 kararları tahmine dayalı olur.
+| # | P | Fix | File | Effort |
+|---|---|-----|------|--------|
+| 1 | 🔴 | `shareLinkViewed` event'ini share page'de çağır | `app/share/[token]/page.tsx` (new client component) | S |
+| 2 | 🔴 | Upgrade banner impression + click event | `components/UpgradeBanner.tsx` | XS |
+| 3 | 🔴 | Onboarding step/complete/skip events | `components/OnboardingWizard.tsx` | XS |
+| 4 | 🟡 | Admin stats'a `total_view_count` ekle | `backend/app/api/v1/admin.py` | XS |
+| 5 | 🟡 | Backend Sentry entegrasyonu | `backend/app/main.py` | S |
+| 6 | 🟡 | Backend structlog JSON loglama | backend middleware | M |
+| 7 | 🟡 | `/admin` Next.js sayfası (stats görselleştirme) | `frontend/src/app/admin/page.tsx` | M |
+| 8 | 🟢 | Pricing page waitlist form conversion tracking | `app/pricing/page.tsx` | S |
