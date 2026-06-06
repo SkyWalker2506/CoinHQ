@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { events } from '@/lib/analytics'
 
 const STORAGE_KEY = 'coinhq_waitlist_emails'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 // Conservative RFC-5322-ish check; intentionally simple — backend will do strict
 // validation when the real signup endpoint lands.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -66,7 +67,7 @@ export default function WaitlistForm({
     }
   }, [])
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
     const trimmed = email.trim().toLowerCase()
     if (!EMAIL_RE.test(trimmed)) {
@@ -77,11 +78,39 @@ export default function WaitlistForm({
     }
     setState('submitting')
 
-    const queue = loadQueue()
-    const isDuplicate = queue.includes(trimmed)
-    if (!isDuplicate) {
-      queue.push(trimmed)
-      saveQueue(queue)
+    let isDuplicate = false
+    let backendOk = false
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/waitlist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed, plan: planName }),
+      })
+      // 201 = new signup, 200 = already on the list — both are success
+      if (res.status === 200 || res.status === 201) {
+        backendOk = true
+        isDuplicate = res.status === 200
+      } else {
+        throw new Error(`Unexpected status ${res.status}`)
+      }
+    } catch {
+      // Network error or non-2xx: fall back to localStorage so CTA never breaks
+      const queue = loadQueue()
+      isDuplicate = queue.includes(trimmed)
+      if (!isDuplicate) {
+        queue.push(trimmed)
+        saveQueue(queue)
+      }
+    }
+
+    // If backend succeeded, still mirror to localStorage for the "already subscribed" hint on reload
+    if (backendOk) {
+      const queue = loadQueue()
+      if (!queue.includes(trimmed)) {
+        queue.push(trimmed)
+        saveQueue(queue)
+      }
     }
 
     // Fire analytics — this is the durable signal even if storage is blocked.
