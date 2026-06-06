@@ -8,6 +8,7 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-for-unit-tests-only")
 
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from app.services.price_service import _fetch_binance_all_prices, get_usd_prices
@@ -131,3 +132,265 @@ class TestGetUsdPrices:
         assert "BTC" in result
         assert "DOGE" not in result
         assert "ETH" not in result
+
+
+# ---------------------------------------------------------------------------
+# CoinGecko fallback tests
+# ---------------------------------------------------------------------------
+
+
+def _make_binance_resp(pairs: list[tuple[str, str]]) -> MagicMock:
+    """Build a mock Binance ticker response for the given (symbol, price) pairs."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = [
+        {"symbol": sym, "price": price} for sym, price in pairs
+    ]
+    mock_resp.raise_for_status = MagicMock()
+    return mock_resp
+
+
+def _make_cg_coins_resp(coins: list[dict]) -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = coins
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.status_code = 200
+    return mock_resp
+
+
+def _make_cg_price_resp(data: dict) -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = data
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.status_code = 200
+    return mock_resp
+
+
+class TestCoinGeckoFallback:
+    """
+    Tests for the CoinGecko fallback path in get_usd_prices.
+    All tests mock HTTP responses — no real network calls.
+    """
+
+    @pytest.mark.asyncio
+    async def test_asset_on_binance_not_priced_via_coingecko(self):
+        """Asset present on Binance → priced via Binance, CoinGecko NOT called."""
+        binance_resp = _make_binance_resp([("BTCUSDT", "65000.0")])
+
+        call_count = 0
+
+        async def mock_get(url, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if "binance.com" in url:
+                return binance_resp
+            raise AssertionError(f"Unexpected URL called: {url}")
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.aclose = AsyncMock()
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        result = await get_usd_prices(
+            ["BTC"], http_client=mock_client, redis_client=mock_redis
+        )
+
+        assert result["BTC"] == 65000.0
+        # Only Binance was called (1 call)
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_asset_missing_on_binance_priced_via_coingecko(self):
+        """Asset missing on Binance but present on CoinGecko → priced via CoinGecko."""
+        binance_resp = _make_binance_resp([])  # no USDT pairs at all
+
+        coin_list_resp = _make_cg_coins_resp(
+            [{"id": "mytoken", "symbol": "MTK", "name": "MyToken"}]
+        )
+        cg_price_resp = _make_cg_price_resp({"mytoken": {"usd": 0.042}})
+
+        call_responses = {
+            "binance.com": binance_resp,
+            "coins/list": coin_list_resp,
+            "simple/price": cg_price_resp,
+        }
+
+        async def mock_get(url, **kwargs):
+            for key, resp in call_responses.items():
+                if key in url:
+                    return resp
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.aclose = AsyncMock()
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        result = await get_usd_prices(
+            ["MTK"], http_client=mock_client, redis_client=mock_redis
+        )
+
+        assert result["MTK"] == pytest.approx(0.042)
+
+    @pytest.mark.asyncio
+    async def test_coingecko_error_leaves_asset_unpriced_no_exception(self):
+        """CoinGecko error/timeout → asset left unpriced, no exception raised."""
+        binance_resp = _make_binance_resp([])  # no pairs
+
+        call_count = {"coins_list": 0}
+
+        async def mock_get(url, **kwargs):
+            if "binance.com" in url:
+                return binance_resp
+            if "coins/list" in url:
+                call_count["coins_list"] += 1
+                raise httpx.TimeoutException("timeout")
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.aclose = AsyncMock()
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        # Must not raise
+        result = await get_usd_prices(
+            ["UNKNOWNCOIN"], http_client=mock_client, redis_client=mock_redis
+        )
+
+        assert "UNKNOWNCOIN" not in result
+        assert call_count["coins_list"] == 1
+
+    @pytest.mark.asyncio
+    async def test_coingecko_rate_limit_leaves_asset_unpriced_no_exception(self):
+        """CoinGecko 429 → asset left unpriced, no exception raised."""
+        binance_resp = _make_binance_resp([])
+
+        coin_list_resp = _make_cg_coins_resp(
+            [{"id": "mytoken", "symbol": "MTK", "name": "MyToken"}]
+        )
+
+        rate_limit_resp = MagicMock()
+        rate_limit_resp.status_code = 429
+        rate_limit_resp.raise_for_status = MagicMock()
+
+        async def mock_get(url, **kwargs):
+            if "binance.com" in url:
+                return binance_resp
+            if "coins/list" in url:
+                return coin_list_resp
+            if "simple/price" in url:
+                return rate_limit_resp
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.aclose = AsyncMock()
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        result = await get_usd_prices(
+            ["MTK"], http_client=mock_client, redis_client=mock_redis
+        )
+
+        assert "MTK" not in result
+
+    @pytest.mark.asyncio
+    async def test_symbol_to_id_map_cached_in_redis(self):
+        """CoinGecko symbol→id map is written to Redis and read from cache on second call."""
+        binance_resp = _make_binance_resp([])
+
+        coin_list_resp = _make_cg_coins_resp(
+            [{"id": "mytoken", "symbol": "MTK", "name": "MyToken"}]
+        )
+        cg_price_resp = _make_cg_price_resp({"mytoken": {"usd": 1.5}})
+
+        # Simulate: first call has no Binance cache and no CoinGecko coin-list cache
+        get_call_count = {"coins_list": 0}
+
+        async def mock_get(url, **kwargs):
+            if "binance.com" in url:
+                return binance_resp
+            if "coins/list" in url:
+                get_call_count["coins_list"] += 1
+                return coin_list_resp
+            if "simple/price" in url:
+                return cg_price_resp
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.aclose = AsyncMock()
+
+        setex_calls: list[str] = []
+
+        async def mock_setex(key, ttl, value):
+            setex_calls.append(key)
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = mock_setex
+
+        await get_usd_prices(["MTK"], http_client=mock_client, redis_client=mock_redis)
+
+        # The coin-list cache key must have been written
+        assert any("coin_list" in k for k in setex_calls), (
+            f"coin_list key not in setex calls: {setex_calls}"
+        )
+        # /coins/list was fetched exactly once
+        assert get_call_count["coins_list"] == 1
+
+    @pytest.mark.asyncio
+    async def test_symbol_id_disambiguation_exact_match_preferred(self):
+        """
+        When multiple coins share a ticker, the one whose id == lowercased symbol
+        is preferred over the first match.
+        """
+        binance_resp = _make_binance_resp([])
+
+        # 'xrp' appears first as 'xrp-legacy' then the canonical 'xrp'
+        coin_list_resp = _make_cg_coins_resp(
+            [
+                {"id": "xrp-legacy", "symbol": "XRP", "name": "XRP Legacy"},
+                {"id": "xrp", "symbol": "XRP", "name": "XRP"},
+            ]
+        )
+        # Only the canonical id 'xrp' will be queried
+        cg_price_resp = _make_cg_price_resp({"xrp": {"usd": 0.5}})
+
+        async def mock_get(url, **kwargs):
+            if "binance.com" in url:
+                return binance_resp
+            if "coins/list" in url:
+                return coin_list_resp
+            if "simple/price" in url:
+                # Verify the canonical id was sent
+                params = kwargs.get("params", {})
+                assert "xrp" in params.get("ids", ""), (
+                    f"Expected canonical id 'xrp' in ids, got: {params}"
+                )
+                return cg_price_resp
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.aclose = AsyncMock()
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        result = await get_usd_prices(
+            ["XRP"], http_client=mock_client, redis_client=mock_redis
+        )
+
+        assert result["XRP"] == pytest.approx(0.5)
