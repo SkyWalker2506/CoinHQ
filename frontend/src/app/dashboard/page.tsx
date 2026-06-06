@@ -16,6 +16,7 @@ import { OnboardingWizard } from "@/components/OnboardingWizard";
 import TradeHistory from "@/components/TradeHistory";
 
 const AllocationChart = dynamic(() => import("@/components/AllocationChart"), { ssr: false });
+const PortfolioHistoryChart = dynamic(() => import("@/components/PortfolioHistoryChart"), { ssr: false });
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -96,6 +97,10 @@ export default function DashboardPage() {
                 ? undefined
                 : (portfolio as PortfolioResponse)?.cached
             }
+          />
+
+          <PortfolioHistoryChart
+            profileId={typeof selectedProfileId === "number" ? selectedProfileId : null}
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
