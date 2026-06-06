@@ -56,3 +56,20 @@ Append-only ADR log for forge-driven decisions. Each decision is dated and refer
 - **Decision:** Bumped fastapi 0.111→0.135.3, pydantic 2.7.1→2.11.10, pydantic-settings 2.3→2.6.1 (pulls starlette 0.37→1.2.1). Migrated all `class Config` → `ConfigDict`/`SettingsConfigDict` (config.py + profile/exchange_key/waitlist schemas).
 - **Why:** Run-5 deferred this as a "pydantic cascade"; done now as a focused task. starlette 1.x caused no breakage; full suite (169) green, deprecation warnings 6→2.
 - **Etkisi:** PR #45. Remaining 2 warnings are a pre-existing test-mock RuntimeWarning (keys_api) — not pydantic.
+
+---
+
+## Run 7 — 2026-06-06 (direction pivot: personal app, not SaaS)
+
+### D009: CoinHQ reframed as Musab's personal app, not a product to sell
+- **Decision:** Stop investing in marketing/SaaS surface (waitlist, pricing tiers, landing growth, SEO-for-acquisition). Build real functionality for daily personal portfolio use.
+- **Why:** User directive 2026-06-06 — "satış olarak değil kendi uygulamam olarak ilerlet". Existing waitlist/pricing code stays but is frozen.
+- **Etkisi:** Roadmap now driven by the functional gap analysis (tx history, cost basis/P&L, historical snapshots, trade UI completion, price-source breadth).
+
+### D010: Sprint 6 functional features landed
+- **T-017 (PR #46):** Transaction History view — owner sees past trades (date/side/asset/exchange/amount/USD/actor/status) via existing GET trade endpoint. Frontend-only, 7 tests.
+- **T-018 (PR #47):** CoinGecko price fallback — assets without a Binance USDT pair now priced via CoinGecko (24h symbol-map cache, 60s price cache, errors swallowed). 6 tests, full suite 175 pass.
+
+### D011: Historical portfolio value via snapshot-on-fetch (no separate cron)
+- **Decision:** Persist a `portfolio_snapshots` row when portfolio is computed, throttled to ~1/hour per profile, best-effort (never block/break the portfolio response). Expose `GET /profiles/{id}/history?days=N`; chart on dashboard with recharts.
+- **Why:** Avoids standing up a scheduler; snapshots accumulate naturally as the owner uses the app. Good enough for personal trend tracking.
