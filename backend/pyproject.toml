@@ -39,6 +39,10 @@ dev = [
 [project.optional-dependencies]
 test = ["pytest", "pytest-asyncio", "pytest-mock", "aiosqlite", "httpx"]
 
+[tool.vercel]
+# Vercel project root is ./backend; the FastAPI instance lives at app/main.py
+entrypoint = "app.main:app"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
