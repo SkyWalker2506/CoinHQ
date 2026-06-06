@@ -10,6 +10,7 @@ import type {
   SharedPortfolioView,
   TradeOrder,
   TradeOrderRequest,
+  PnlResponse,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -169,3 +170,7 @@ export const delegateTrade = (token: string, payload: TradeOrderRequest) =>
     method: "POST",
     body: JSON.stringify(payload),
   });
+
+// Realized P&L
+export const getProfilePnl = (profileId: number) =>
+  request<PnlResponse>(`/api/v1/profiles/${profileId}/pnl`);
