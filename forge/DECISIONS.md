@@ -73,3 +73,7 @@ Append-only ADR log for forge-driven decisions. Each decision is dated and refer
 ### D011: Historical portfolio value via snapshot-on-fetch (no separate cron)
 - **Decision:** Persist a `portfolio_snapshots` row when portfolio is computed, throttled to ~1/hour per profile, best-effort (never block/break the portfolio response). Expose `GET /profiles/{id}/history?days=N`; chart on dashboard with recharts.
 - **Why:** Avoids standing up a scheduler; snapshots accumulate naturally as the owner uses the app. Good enough for personal trend tracking.
+
+### D012: Realized P&L / cost basis from CoinHQ trades (AVCO, partial by design)
+- **T-021 (PR #50) + T-022 (PR #51):** `GET /profiles/{id}/pnl` computes per-asset avg cost + realized P&L (average-cost method) from filled TradeOrder rows; dashboard panel shows total + per-asset, captioned "CoinHQ trades only".
+- **Why partial:** CoinHQ only knows trades placed through it; exchange-direct trades have no cost basis. Documented in schema + UI caption rather than faked.
