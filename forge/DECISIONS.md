@@ -47,3 +47,12 @@ Append-only ADR log for forge-driven decisions. Each decision is dated and refer
 ### D007: Dependabot triage splits safe vs breaking
 - **Decision:** Auto-merge only test-verifiable, non-breaking bumps (backend libs + GitHub Actions). Defer the three breaking frontend bumps — tailwindcss 3→4 (PR #14), recharts 2→3 (#13), eslint-config-next 14→15 (#12) — which need codemods + visual regression QA.
 - **Why:** Major frontend bumps change build/output and need a browser sanity pass forge can't do unattended.
+
+---
+
+## Run 6 — 2026-06-06
+
+### D008: fastapi 0.135 + pydantic 2.11 upgrade applied (dependabot #5 cleared)
+- **Decision:** Bumped fastapi 0.111→0.135.3, pydantic 2.7.1→2.11.10, pydantic-settings 2.3→2.6.1 (pulls starlette 0.37→1.2.1). Migrated all `class Config` → `ConfigDict`/`SettingsConfigDict` (config.py + profile/exchange_key/waitlist schemas).
+- **Why:** Run-5 deferred this as a "pydantic cascade"; done now as a focused task. starlette 1.x caused no breakage; full suite (169) green, deprecation warnings 6→2.
+- **Etkisi:** PR #45. Remaining 2 warnings are a pre-existing test-mock RuntimeWarning (keys_api) — not pydantic.

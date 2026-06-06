@@ -9,5 +9,17 @@
     "functional": 7,
     "code_quality": 8,
     "performance": 8
+  },
+  {
+    "run": 6,
+    "ts": "2026-06-06",
+    "total": 8.2,
+    "build": 9,
+    "gdd": 8,
+    "ui": null,
+    "functional": 8,
+    "code_quality": 9,
+    "performance": null,
+    "note": "single-task fastapi/pydantic migration; clean, fully test-verified"
   }
 ]
