@@ -43,6 +43,7 @@ async def portfolio_for_profile(
         keys,
         redis=request.app.state.redis,
         http_client=request.app.state.http_client,
+        db=db,
     )
 
 

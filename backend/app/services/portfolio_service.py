@@ -6,15 +6,19 @@ price them in USD via exchange public APIs, cache results in Redis.
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import redis.asyncio as aioredis
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.security import decrypt
 from app.exchanges.factory import get_adapter
 from app.models.exchange_key import ExchangeKey
+from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.schemas.portfolio import (
     AggregatePortfolioResponse,
     Balance,
@@ -23,6 +27,8 @@ from app.schemas.portfolio import (
     ProfilePortfolio,
 )
 from app.services.price_service import get_usd_prices
+
+_SNAPSHOT_THROTTLE_HOURS = 1
 
 _stdlib_logger = logging.getLogger(__name__)
 
@@ -69,12 +75,38 @@ def _build_exchange_balance(
     )
 
 
+async def _maybe_save_snapshot(
+    profile_id: int,
+    total_usd: float,
+    db: AsyncSession,
+) -> None:
+    """Persist a portfolio snapshot at most once per hour. Best-effort only."""
+    try:
+        cutoff = datetime.now(UTC) - timedelta(hours=_SNAPSHOT_THROTTLE_HOURS)
+        result = await db.execute(
+            select(PortfolioSnapshot)
+            .where(
+                PortfolioSnapshot.profile_id == profile_id,
+                PortfolioSnapshot.created_at >= cutoff,
+            )
+            .limit(1)
+        )
+        recent = result.scalars().first()
+        if recent is None:
+            snapshot = PortfolioSnapshot(profile_id=profile_id, total_usd=total_usd)
+            db.add(snapshot)
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio_snapshot_write_failed", profile_id=profile_id, error=str(exc))
+
+
 async def get_portfolio(
     profile_id: int,
     profile_name: str,
     keys: list[ExchangeKey],
     redis: aioredis.Redis | None = None,
     http_client: httpx.AsyncClient | None = None,
+    db: AsyncSession | None = None,
 ) -> PortfolioResponse:
     """Get portfolio for a single profile with Redis caching."""
     cache_key = f"portfolio:profile:{profile_id}"
@@ -113,6 +145,9 @@ async def get_portfolio(
     ]
 
     total_usd = sum(eb.total_usd for eb in exchange_balances)
+
+    if db is not None:
+        await _maybe_save_snapshot(profile_id, total_usd, db)
 
     response = PortfolioResponse(
         profile_id=profile_id,

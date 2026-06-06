@@ -1,5 +1,6 @@
+from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Balance(BaseModel):
@@ -35,3 +36,10 @@ class AggregatePortfolioResponse(BaseModel):
     profiles: list[ProfilePortfolio]
     grand_total_usd: float
     asset_totals: dict[str, float]  # asset -> total USD across all profiles
+
+
+class PortfolioHistoryPoint(BaseModel):
+    created_at: datetime
+    total_usd: float
+
+    model_config = ConfigDict(from_attributes=True)
