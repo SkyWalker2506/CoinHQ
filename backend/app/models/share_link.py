@@ -11,7 +11,7 @@ class ShareLink(Base):
     __tablename__ = "share_links"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"))
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
 
     # Permission flags
@@ -26,6 +26,14 @@ class ShareLink(Base):
     last_viewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    allow_follow: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Delegated trade permissions. Withdrawals/transfers are NEVER permitted.
+    can_trade: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    trade_direction: Mapped[str] = mapped_column(String(10), default="both", server_default="both")  # both|buy|sell
+    trade_allowed_coins: Mapped[str | None] = mapped_column(String(255), nullable=True)  # CSV whitelist, empty = all
+    trade_max_per_order_usd: Mapped[float | None] = mapped_column(nullable=True)
+    trade_daily_limit_usd: Mapped[float | None] = mapped_column(nullable=True)
 
     profile = relationship("Profile")
 

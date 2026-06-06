@@ -41,3 +41,6 @@ next-env.d.ts
 
 # Alembic
 alembic/versions/*.pyc
+
+# Forge orchestrator runtime state (lock files etc.)
+.jira-state/

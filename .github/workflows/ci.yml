@@ -21,7 +21,7 @@ jobs:
         ports: ["6379:6379"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v3
       - name: Install dependencies
         run: cd backend && uv sync --all-extras
@@ -41,7 +41,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v3
         with: {version: 8}
       - uses: actions/setup-node@v6
@@ -50,5 +50,7 @@ jobs:
         run: cd frontend && pnpm install
       - name: Lint
         run: cd frontend && pnpm lint
+      - name: Test
+        run: cd frontend && pnpm test
       - name: Build
         run: cd frontend && pnpm build

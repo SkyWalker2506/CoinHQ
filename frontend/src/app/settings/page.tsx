@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getProfiles, deleteProfile, getKeys, deleteKey } from "@/lib/api";
+import { getProfiles, deleteProfile, getKeys, deleteKey, ownerTrade } from "@/lib/api";
 import type { Profile, ExchangeKey } from "@/lib/types";
 import AddProfileModal from "@/components/AddProfileModal";
 import AddKeyModal from "@/components/AddKeyModal";
 import ShareLinkManager from "@/components/ShareLinkManager";
-import Link from "next/link";
+import TradePanel from "@/components/TradePanel";
 import { Navigation } from "@/components/Navigation";
+import { ConfirmModal } from "@/components/ConfirmModal";
+import { UpgradeBanner } from "@/components/UpgradeBanner";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -16,6 +18,12 @@ export default function SettingsPage() {
   const [keys, setKeys] = useState<Record<number, ExchangeKey[]>>({});
   const [showAddProfile, setShowAddProfile] = useState(false);
   const [addKeyForProfile, setAddKeyForProfile] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+  const [tierLimitMessage, setTierLimitMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -25,7 +33,6 @@ export default function SettingsPage() {
   const loadProfiles = async () => {
     const p = await getProfiles();
     setProfiles(p);
-    // Load keys for each profile
     const keyMap: Record<number, ExchangeKey[]> = {};
     await Promise.all(
       p.map(async (profile) => {
@@ -39,34 +46,51 @@ export default function SettingsPage() {
     loadProfiles();
   }, []);
 
-  const handleDeleteProfile = async (id: number) => {
-    if (!confirm("Delete this profile and all its API keys?")) return;
-    await deleteProfile(id);
-    await loadProfiles();
+  const handleDeleteProfile = (id: number) => {
+    setConfirmAction({
+      title: "Delete Profile",
+      message: "Delete this profile and all its API keys? This action cannot be undone.",
+      onConfirm: async () => {
+        setConfirmAction(null);
+        await deleteProfile(id);
+        await loadProfiles();
+      },
+    });
   };
 
-  const handleDeleteKey = async (profileId: number, keyId: number) => {
-    if (!confirm("Remove this API key?")) return;
-    await deleteKey(profileId, keyId);
-    await loadProfiles();
+  const handleDeleteKey = (profileId: number, keyId: number) => {
+    setConfirmAction({
+      title: "Remove API Key",
+      message: "Remove this API key? You can always add it again later.",
+      onConfirm: async () => {
+        setConfirmAction(null);
+        await deleteKey(profileId, keyId);
+        await loadProfiles();
+      },
+    });
   };
 
   return (
     <>
       <Navigation />
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-white mt-1">Settings</h1>
-        </div>
+      <div className="flex items-center justify-between mb-6 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Settings</h1>
         <button
           onClick={() => setShowAddProfile(true)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+          className="px-3 py-2 sm:px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
         >
           Add Profile
         </button>
       </div>
+
+      {/* Tier limit banner */}
+      {tierLimitMessage && (
+        <div className="mb-6">
+          <UpgradeBanner message={tierLimitMessage} />
+        </div>
+      )}
 
       {/* Profiles list */}
       <div className="space-y-4">
@@ -78,7 +102,7 @@ export default function SettingsPage() {
         {profiles.map((profile) => (
           <div
             key={profile.id}
-            className="bg-gray-900 border border-gray-800 rounded-xl p-6"
+            className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6"
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-white">{profile.name}</h2>
@@ -99,13 +123,22 @@ export default function SettingsPage() {
               {(keys[profile.id] ?? []).map((key) => (
                 <div
                   key={key.id}
-                  className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2"
+                  className="flex items-center justify-between bg-gray-800 rounded-lg px-3 sm:px-4 py-2"
                 >
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-white capitalize">
                       {key.exchange}
                     </span>
-                    <span className="text-xs text-gray-500 ml-3">
+                    <span
+                      className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                        key.key_type === "trade"
+                          ? "bg-amber-500/20 text-amber-300"
+                          : "bg-gray-700 text-gray-400"
+                      }`}
+                    >
+                      {key.key_type === "trade" ? "Trade" : "Read-only"}
+                    </span>
+                    <span className="text-xs text-gray-500 ml-1">
                       Added {new Date(key.created_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -126,13 +159,37 @@ export default function SettingsPage() {
             >
               + Add API Key
             </button>
+
+            {/* Owner trading — only when the profile has a trade key */}
+            {(() => {
+              const tradeExchanges = (keys[profile.id] ?? [])
+                .filter((k) => k.key_type === "trade")
+                .map((k) => k.exchange);
+              if (tradeExchanges.length === 0) return null;
+              return (
+                <div className="mt-4 border-t border-gray-800 pt-4">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
+                    Trade
+                  </p>
+                  <TradePanel
+                    exchanges={tradeExchanges}
+                    onSubmit={(payload) => ownerTrade(profile.id, payload)}
+                  />
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>
 
       {/* Share Links */}
       <div className="mt-8">
-        <ShareLinkManager profiles={profiles} />
+        <ShareLinkManager
+          profiles={profiles}
+          tradeKeyProfileIds={profiles
+            .filter((p) => (keys[p.id] ?? []).some((k) => k.key_type === "trade"))
+            .map((p) => p.id)}
+        />
       </div>
 
       {/* Modals */}
@@ -140,6 +197,7 @@ export default function SettingsPage() {
         <AddProfileModal
           onClose={() => setShowAddProfile(false)}
           onCreated={loadProfiles}
+          onTierLimit={(msg) => setTierLimitMessage(msg)}
         />
       )}
       {addKeyForProfile !== null && (
@@ -149,6 +207,15 @@ export default function SettingsPage() {
           onAdded={loadProfiles}
         />
       )}
+      <ConfirmModal
+        isOpen={confirmAction !== null}
+        title={confirmAction?.title ?? ""}
+        message={confirmAction?.message ?? ""}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={confirmAction?.onConfirm ?? (() => {})}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
     </>
   );

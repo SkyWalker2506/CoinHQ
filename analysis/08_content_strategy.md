@@ -1,70 +1,76 @@
-## Content & Editorial Analiz Raporu
-> Lead: ArtLead (A9) | Model: Sonnet 4.6
+# Content Strategy Analysis — CoinHQ
+_Date: 2026-04-10 · Lead: ArtLead (A9) · Model: Sonnet 4.6_
 
-### Mevcut Durum
+## Delta vs 2026-04-06
 
-**Güçlü yanlar:**
-- Placeholder text anlamlı ve spesifik: `"e.g. Musab"`, `"e.g. For accountant"`, `"Paste your read-only API key"` — kullanıcıya doğrudan ne yapması gerektiğini söylüyor
-- Güvenlik mesajlaşması yerleştirilmiş: `"Keys are encrypted with AES-256 before storage. Only read-only keys are accepted."` — trust building açısından doğru
-- OKX passphrase uyarısı inline yerleştirilmiş: `"OKX: use format secret|passphrase"` — edge case için contextual help
-- Share sayfasında `"Read-only portfolio view"` badge'i bağlamı net kuruyor
-- Footer copy temiz: `"Exchange API secrets are never exposed."`
-- README kapsamlı ve teknik olarak doğru — setup süreci net
-- Error mesajları kullanıcıya iletiliyor (API hata mesajı doğrudan gösteriliyor)
+| Item | April 6 | April 10 | Status |
+|------|---------|----------|--------|
+| OG meta tags (`og:title`, `og:description`) | Missing | Added in `layout.tsx` | ✅ |
+| Twitter Card metadata | Missing | `summary` card added | ✅ |
+| Share page dynamic `generateMetadata()` | Missing | Implemented with profile name | ✅ |
+| Favicon | Missing | `favicon.ico` added | ✅ |
+| Landing page at `/` | Missing | Still redirects to `/dashboard` | 🔴 |
+| Product description / value prop copy | Weak | Still only README | 🟡 |
+| Pricing page copy accuracy | — | "All 5 exchanges" — incorrect | 🟡 |
+| Onboarding tooltip/guide copy | — | Wizard has copy, no review | 🟡 |
 
-**Puan: 5/10**
+**Score: 2/10 → 5/10**
 
----
+## Current State
 
-### Kritik Eksikler (hemen yapılmalı)
+Global metadata is now set in `frontend/src/app/layout.tsx:9–25` with `og:title`, `og:description`, `og:type: "website"`, and `twitter:card: "summary"`. The share page (`share/[token]/page.tsx:7–27`) uses `generateMetadata()` to generate dynamic per-share titles and descriptions based on `profile_name`.
 
-| # | Sorun | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Login sayfası yok → onboarding copy hiç yok; yeni kullanıcı uygulamanın ne yaptığını göremiyor | High | Login sayfasına tagline + 3 maddelik value prop + "Sign in with Google" CTA yaz | S |
-| 2 | Empty state metinleri kullanışsız — `"No profiles yet."` / `"No API keys added yet."` sadece durumu söylüyor, kullanıcıyı yönlendirmiyor | High | CTA ekle: `"No profiles yet. Add your first profile to start tracking."` + action button | S |
-| 3 | Error mesajları ham API string — `err.message` doğrudan gösteriliyor; teknik/İngilizce hata mesajları kullanıcıya açıklanmıyor | High | Error message mapping: bilinen hatalar için Türkçe/kullanıcı dostu karşılık | M |
-| 4 | `confirm()` dialog metinleri kısa ve agresif — `"Delete this profile and all its API keys?"` için geri dönüşsüzlük vurgulanmıyor | Med | `"Bu profili ve bağlı tüm API anahtarlarını kalıcı olarak sil?"` + `"Bu işlem geri alınamaz."` uyarısı | S |
-| 5 | OKX secret format talimatı (`secret|passphrase`) tek satır yer biliyor; format hatasında kullanıcı ne yapacağını bilmiyor | Med | Expandable help section veya link to OKX docs | S |
+There is no marketing landing page. The root route (`app/page.tsx:3`) redirects authenticated users to `/dashboard` and unauthenticated users to `/login`. Google bots and cold organic traffic have nothing to index. The only public, indexable, SEO-valuable pages are `/share/[token]` and `/pricing`.
 
----
+Pricing page copy (`frontend/src/app/pricing/page.tsx`) states "All 5 exchanges" for the free tier, but the actual exchange limit is 2, not 5. The "5 exchanges" figure appears to be from an earlier design. Copy and constraints are out of sync.
 
-### İyileştirme Önerileri (planlı)
+## Findings
 
-| # | Öneri | Etki | Çözüm | Efor |
-|---|-------|------|-------|------|
-| 1 | Share link "Permissions" section'ındaki etiketler teknik — `"Show allocation %"` yerine `"Coin dağılım yüzdesi"` veya açıklamalı toggle | Med | Her permission için bir satır açıklama ekle | S |
-| 2 | "No active share links." metni yeterince davetkar değil — share linkin ne işe yaradığı açıklanmıyor | Med | `"Portfolyonuzu API key'siz başkalarıyla paylaşın. İlk linkinizi oluşturun."` | S |
-| 3 | Settings sayfasında bölüm başlıkları yok — "Profiles" ve "Share Links" ayrı section olarak başlıklandırılmamış | Low | `<h2>Profiles</h2>` ve `<h2>Share Links</h2>` section header ekle | S |
-| 4 | Dashboard header'ında kullanıcı adı veya profil bilgisi yok — kimin oturumu açık bilinmiyor | Med | Header'a Google profil fotoğrafı + isim veya sadece avatar ekle | M |
-| 5 | Expiry format localization yok — `toLocaleDateString()` kullansa da locale belirsiz; 04/05/2026 ABD'de farklı, Türkiye'de farklı okunur | Low | Açık tarih formatı: `"5 Nisan 2026"` veya ISO | S |
-| 6 | `"+ New Link"` ve `"+ Add API Key"` button etiketleri tutarsız format — kimi yerde `+` prefix, kimi yerde yok | Low | Tüm ekle butonlarını tek formata çek | S |
+### 🔴 Critical
 
----
+**F1 — No marketing landing page at `/`**
+`frontend/src/app/page.tsx:3` — Root redirects all traffic. There is no crawlable, human-readable landing page explaining the product. This is the single biggest content gap: users arriving from share links, social media, or organic search hit `/login` with no context. Fix: a minimal landing page (hero + value prop + "Get started free" CTA) at `/`.
 
-### Kesin Olmalı (industry standard)
+**F2 — Pricing page copy is factually incorrect**
+`frontend/src/app/pricing/page.tsx` — "All 5 exchanges" appears in the feature list for both free and premium plans, but the actual free-tier limit (`backend/app/core/limits.py:5–13`) is 2 exchange keys per profile, not 5. This creates false expectations and will drive support tickets. Fix: audit every feature claim on the pricing page against actual `limits.py` values.
 
-- **Onboarding copy:** Login sayfasında en az tagline + 3 benefit bullet
-- **Page title'ları:** Tüm sayfalar için spesifik `<title>`: şu an `"CoinHQ — Crypto Portfolio Tracker"` tüm sayfalarda aynı
-- **Error hierarchy:** Kullanıcı hatası (form validation) vs sistem hatası (API down) vs not-found ayrı mesaj tonları ile
-- **Destructive action confirmation:** Silme işlemleri için native `confirm()` yerine içerik doğrulama ("Silmek için profil adını yazın") veya en azından modal + sarı uyarı
-- **Metadata eksikliği:** `og:description`, `og:image` — özellikle Share sayfasında sosyal preview önemli
-- **Tutarlı CTA dili:** "Create", "Save", "Add", "Remove" — İngilizce tutulacaksa tüm UI İngilizce kalmalı (şu an karışık değil ama dikkat edilmeli)
+### 🟡 Important
 
----
+**F3 — Share page OG tags missing `og:image`**
+`frontend/src/app/share/[token]/page.tsx:17–20` — `generateMetadata()` returns `og:title` and `og:description` but no `og:image`. Twitter/Discord/Telegram link unfurls show a blank card. Fix: add `public/og-default.png` (1200×630) as static fallback in `layout.tsx`.
 
-### Kesin Değişmeli (mevcut sorunlar)
+**F4 — Onboarding wizard copy not reviewed for tone/clarity**
+`frontend/src/components/OnboardingWizard.tsx` — 3-step wizard exists but copy hasn't been reviewed for clarity. Step 2 ("Connect Exchange") may confuse users about what "read-only" means and why it's safe. Fix: add a short "Why read-only? We never trade." reassurance in step 2.
 
-- `"Loading portfolio..."` sadece text → skeleton veya spinner + daha az metin
-- Empty state'lerde CTA button eksik — yönlendirme sadece link ile yapılıyor
-- `err.message` doğrudan render — production'da kullanıcıya teknik stack trace gelebilir
-- Share sayfası footer: `"Generated by CoinHQ"` → `"CoinHQ ile oluşturuldu"` (TR audience için) veya link ekle
+**F5 — `sitemap.ts` has `yourdomain.com` placeholder**
+`frontend/src/app/sitemap.ts:6` — The sitemap URL uses a literal `yourdomain.com`. Robots.txt references this sitemap. Search engines indexing this sitemap will follow the wrong domain. Fix: `process.env.NEXT_PUBLIC_APP_URL`.
 
----
+**F6 — No error page copy (404, 500)**
+No custom `not-found.tsx` or `error.tsx` at the app level. Users hitting broken share links or expired tokens see Next.js default error pages. Fix: add branded 404 with "This portfolio may have been made private" copy for share link not-found scenarios.
 
-### Nice-to-Have (diferansiasyon)
+### 🟢 Good
 
-- "How it works" section login sayfasında (3 adım: connect → track → share)
-- Tooltip'ler ile contextual help — özellikle "read-only key" kavramını bilmeyen kullanıcılar için
-- Exchange-specific API key setup guide linki (Binance için Binance docs, OKX için OKX docs)
-- Share sayfasında "Son güncelleme" timestamp
-- Multi-language desteği (TR/EN) — self-hosted audience global
+**F7 — Share page `generateMetadata` is well-structured.** Dynamic title pattern "username's Crypto Portfolio — CoinHQ" is shareable and SEO-friendly.
+
+**F8 — `UpgradeBanner` copy is clear and actionable.** "You've reached the free tier limit. Upgrade to Premium." is straightforward.
+
+## Action Items
+
+| # | P | Fix | File | Effort |
+|---|---|-----|------|--------|
+| 1 | 🔴 | Landing page at `/` — hero + value prop + CTA | `app/page.tsx`, new landing component | M |
+| 2 | 🔴 | Pricing copy audit — align with `limits.py` actual values | `app/pricing/page.tsx` | S |
+| 3 | 🟡 | `og:image` static fallback (1200×630) | `public/og-default.png` + `layout.tsx` | S |
+| 4 | 🟡 | Onboarding step 2 — add read-only safety reassurance | `components/OnboardingWizard.tsx` | XS |
+| 5 | 🟡 | `sitemap.ts` domain — use `NEXT_PUBLIC_APP_URL` | `app/sitemap.ts:6` | XS |
+| 6 | 🟡 | Custom 404 / error pages | `app/not-found.tsx`, `app/error.tsx` | S |
+| 7 | 🟢 | JSON-LD `SoftwareApplication` schema on landing/pricing | new landing page | S |
+
+## References
+- `frontend/src/app/layout.tsx`
+- `frontend/src/app/share/[token]/page.tsx`
+- `frontend/src/app/pricing/page.tsx`
+- `frontend/src/app/sitemap.ts`
+- `frontend/src/components/OnboardingWizard.tsx`
+- `backend/app/core/limits.py`
+- `analysis/archive_2026-04-06/08_content_strategy.md`

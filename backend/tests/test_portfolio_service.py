@@ -40,11 +40,11 @@ async def test_get_portfolio_parallel_exchange_calls():
 
     with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch_balance):
         with patch(
-            "app.services.portfolio_service._get_usd_prices",
+            "app.services.portfolio_service.get_usd_prices",
             return_value={"BTC": 65000.0},
         ):
             mock_keys = [_make_key("binance"), _make_key("bybit")]
-            result = await get_portfolio(1, "test", mock_keys, redis=None)
+            await get_portfolio(1, "test", mock_keys, redis=None)
 
     assert call_count == 2  # Both exchanges called
 
@@ -54,7 +54,7 @@ async def test_get_portfolio_single_coingecko_call():
     """CoinGecko should be called once regardless of exchange count"""
     coingecko_calls = 0
 
-    async def mock_prices(assets, http_client=None, redis=None):
+    async def mock_prices(assets, http_client=None, redis_client=None):
         nonlocal coingecko_calls
         coingecko_calls += 1
         return {"ETH": 3500.0}
@@ -62,7 +62,7 @@ async def test_get_portfolio_single_coingecko_call():
     async def mock_fetch(key, http_client=None):
         return (key.exchange, [_make_balance("ETH")])
 
-    with patch("app.services.portfolio_service._get_usd_prices", side_effect=mock_prices):
+    with patch("app.services.portfolio_service.get_usd_prices", side_effect=mock_prices):
         with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch):
             mock_keys = [_make_key("binance"), _make_key("bybit"), _make_key("okx")]
             await get_portfolio(1, "test", mock_keys, redis=None)
@@ -81,7 +81,7 @@ async def test_portfolio_exchange_failure_doesnt_break_others():
 
     with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch):
         with patch(
-            "app.services.portfolio_service._get_usd_prices",
+            "app.services.portfolio_service.get_usd_prices",
             return_value={"ETH": 3500.0},
         ):
             mock_keys = [_make_key("binance"), _make_key("bybit")]

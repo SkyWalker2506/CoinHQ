@@ -5,8 +5,8 @@ Usage: uv run python scripts/rotate_keys.py --old-key OLD --new-key NEW
 
 If --new-key is omitted, a fresh Fernet key is generated automatically.
 """
-import asyncio
 import argparse
+import asyncio
 
 from cryptography.fernet import Fernet, MultiFernet
 

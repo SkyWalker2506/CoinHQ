@@ -1,3 +1,5 @@
+import WaitlistForm from '@/components/WaitlistForm'
+
 export default function PricingPage() {
   const plans = [
     {
@@ -53,6 +55,7 @@ export default function PricingPage() {
             </div>
           ))}
         </div>
+        <WaitlistForm />
       </div>
     </div>
   )

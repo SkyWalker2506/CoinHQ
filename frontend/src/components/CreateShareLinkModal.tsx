@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react";
 import { createShareLink } from "@/lib/api";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
-import type { ShareLink } from "@/lib/types";
+import type { ShareLink, TradeDirection } from "@/lib/types";
 
 interface Props {
   profileId: number;
+  hasTradeKey?: boolean;
   onClose: () => void;
   onCreated: (link: ShareLink) => void;
 }
@@ -18,16 +19,28 @@ const DURATION_OPTIONS = [
   { label: "30 days", value: 30 },
 ];
 
-export default function CreateShareLinkModal({ profileId, onClose, onCreated }: Props) {
+export default function CreateShareLinkModal({ profileId, hasTradeKey = false, onClose, onCreated }: Props) {
   const [showTotalValue, setShowTotalValue] = useState(true);
   const [showCoinAmounts, setShowCoinAmounts] = useState(false);
   const [showExchangeNames, setShowExchangeNames] = useState(false);
   const [showAllocationPct, setShowAllocationPct] = useState(true);
+  const [allowFollow, setAllowFollow] = useState(true);
   const [durationDays, setDurationDays] = useState<number | null>(null);
   const [label, setLabel] = useState("");
+  // Trade delegation (off by default; requires a trade key on the profile)
+  const [canTrade, setCanTrade] = useState(false);
+  const [tradeDirection, setTradeDirection] = useState<TradeDirection>("both");
+  const [allowedCoins, setAllowedCoins] = useState("");
+  const [maxPerOrder, setMaxPerOrder] = useState("");
+  const [dailyLimit, setDailyLimit] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const trapRef = useFocusTrap(true);
+
+  const numOrNull = (v: string): number | null => {
+    const n = parseFloat(v);
+    return v.trim() !== "" && !Number.isNaN(n) && n > 0 ? n : null;
+  };
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -55,6 +68,12 @@ export default function CreateShareLinkModal({ profileId, onClose, onCreated }: 
         show_allocation_pct: showAllocationPct,
         expires_at: expiresAt,
         label: label.trim() || null,
+        allow_follow: allowFollow,
+        can_trade: canTrade,
+        trade_direction: tradeDirection,
+        trade_allowed_coins: canTrade && allowedCoins.trim() ? allowedCoins.trim().toUpperCase() : null,
+        trade_max_per_order_usd: canTrade ? numOrNull(maxPerOrder) : null,
+        trade_daily_limit_usd: canTrade ? numOrNull(dailyLimit) : null,
       });
       onCreated(link);
     } catch (e: unknown) {
@@ -83,6 +102,7 @@ export default function CreateShareLinkModal({ profileId, onClose, onCreated }: 
             { label: "Show coin amounts", value: showCoinAmounts, set: setShowCoinAmounts },
             { label: "Show exchange names", value: showExchangeNames, set: setShowExchangeNames },
             { label: "Show allocation %", value: showAllocationPct, set: setShowAllocationPct },
+          { label: "Allow others to follow this portfolio", value: allowFollow, set: setAllowFollow },
           ].map(({ label, value, set }) => (
             <label key={label} className="flex items-center gap-3 cursor-pointer">
               <input
@@ -132,6 +152,86 @@ export default function CreateShareLinkModal({ profileId, onClose, onCreated }: 
             maxLength={100}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
           />
+        </div>
+
+        {/* Trading delegation */}
+        <div className="mb-6 border-t border-gray-800 pt-4">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Trading</p>
+          <label className={`flex items-center gap-3 ${hasTradeKey ? "cursor-pointer" : "opacity-60 cursor-not-allowed"}`}>
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-amber-500"
+              checked={canTrade}
+              disabled={!hasTradeKey}
+              onChange={(e) => setCanTrade(e.target.checked)}
+            />
+            <span className="text-sm text-gray-300">Allow buy/sell trading</span>
+          </label>
+          {!hasTradeKey && (
+            <p className="mt-1 text-xs text-gray-500">Add a trade key to this profile to enable delegated trading.</p>
+          )}
+
+          {canTrade && hasTradeKey && (
+            <div className="mt-3 space-y-3 rounded-lg bg-amber-500/5 border border-amber-500/20 p-3">
+              <p className="text-xs text-amber-300/90">
+                The holder can place spot buy/sell orders within these limits. Withdrawals and transfers are never possible. All limits are optional and can be changed later.
+              </p>
+              <div>
+                <span className="block text-xs text-gray-400 mb-1">Direction</span>
+                <div className="flex gap-2">
+                  {(["both", "buy", "sell"] as TradeDirection[]).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setTradeDirection(d)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${
+                        tradeDirection === d ? "bg-amber-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                      }`}
+                    >
+                      {d === "both" ? "Buy & Sell" : d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label htmlFor="allowed-coins" className="block text-xs text-gray-400 mb-1">Allowed coins (optional, comma-separated)</label>
+                <input
+                  id="allowed-coins"
+                  type="text"
+                  placeholder="e.g. BTC, ETH — empty = all"
+                  value={allowedCoins}
+                  onChange={(e) => setAllowedCoins(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus-visible:ring-2 focus-visible:ring-amber-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="max-per-order" className="block text-xs text-gray-400 mb-1">Max per order (USD)</label>
+                  <input
+                    id="max-per-order"
+                    type="number"
+                    min="0"
+                    placeholder="No limit"
+                    value={maxPerOrder}
+                    onChange={(e) => setMaxPerOrder(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus-visible:ring-2 focus-visible:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="daily-limit" className="block text-xs text-gray-400 mb-1">24h limit (USD)</label>
+                  <input
+                    id="daily-limit"
+                    type="number"
+                    min="0"
+                    placeholder="No limit"
+                    value={dailyLimit}
+                    onChange={(e) => setDailyLimit(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus-visible:ring-2 focus-visible:ring-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && <p role="alert" className="text-sm text-red-400 mb-4">{error}</p>}

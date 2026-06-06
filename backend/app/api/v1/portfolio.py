@@ -3,6 +3,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -26,8 +27,10 @@ async def portfolio_for_profile(
     current_user: User = Depends(get_current_user),
 ):
     profile = await db.get(Profile, profile_id)
-    if not profile or profile.user_id != current_user.id:
+    if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+    if profile.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     result = await db.execute(
         select(ExchangeKey).where(ExchangeKey.profile_id == profile_id)
@@ -51,17 +54,13 @@ async def aggregate_portfolio(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Profile).where(Profile.user_id == current_user.id).order_by(Profile.name)
+        select(Profile)
+        .where(Profile.user_id == current_user.id)
+        .order_by(Profile.name)
+        .options(selectinload(Profile.exchange_keys))
     )
     profiles = result.scalars().all()
-
-    profiles_with_keys = []
-    for profile in profiles:
-        keys_result = await db.execute(
-            select(ExchangeKey).where(ExchangeKey.profile_id == profile.id)
-        )
-        keys = keys_result.scalars().all()
-        profiles_with_keys.append((profile, keys))
+    profiles_with_keys = [(p, p.exchange_keys) for p in profiles]
 
     return await get_aggregate_portfolio(
         profiles_with_keys,

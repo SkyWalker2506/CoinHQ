@@ -9,4 +9,6 @@ export const events = {
   shareLinkCopied: () => trackEvent('Share Link Copied'),
   profileCreated: () => trackEvent('Profile Created'),
   shareLinkViewed: (token: string) => trackEvent('Share Link Viewed'),
+  waitlistSubmitted: (plan: string, duplicate: boolean) =>
+    trackEvent('Waitlist Submitted', { plan, duplicate: duplicate ? 'true' : 'false' }),
 }

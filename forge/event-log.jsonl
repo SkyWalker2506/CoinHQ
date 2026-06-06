@@ -1,0 +1,22 @@
+{"ts":"2026-04-26T10:00:00Z","run":4,"sprint":4,"event":"sprint_created","detail":"4 tasks T-007..T-010 in wave 1"}
+{"ts":"2026-04-26T10:00:30Z","run":4,"sprint":4,"task":"T-007","event":"branch_created","detail":"feat/t-007-key-rotation"}
+{"ts":"2026-04-26T10:01:00Z","run":4,"sprint":4,"task":"T-007","event":"code_complete","detail":"4 files changed, 107 insertions"}
+{"ts":"2026-04-26T10:01:10Z","run":4,"sprint":4,"task":"T-007","event":"test_pass","detail":"123/123 backend tests pass"}
+{"ts":"2026-04-26T10:01:20Z","run":4,"sprint":4,"task":"T-007","event":"pr_created","detail":"#34"}
+{"ts":"2026-04-26T10:01:30Z","run":4,"sprint":4,"task":"T-007","event":"review_pass","detail":"score 9/10"}
+{"ts":"2026-04-26T10:01:40Z","run":4,"sprint":4,"task":"T-007","event":"merged","detail":"squash into main"}
+{"ts":"2026-04-26T10:02:00Z","run":4,"sprint":4,"task":"T-008","event":"branch_created","detail":"feat/t-008-oauth-expired-state-test"}
+{"ts":"2026-04-26T10:02:20Z","run":4,"sprint":4,"task":"T-008","event":"code_complete","detail":"86 insertions, 2 new tests"}
+{"ts":"2026-04-26T10:02:30Z","run":4,"sprint":4,"task":"T-008","event":"test_pass","detail":"9/9 auth tests pass"}
+{"ts":"2026-04-26T10:02:40Z","run":4,"sprint":4,"task":"T-008","event":"pr_created","detail":"#35"}
+{"ts":"2026-04-26T10:02:50Z","run":4,"sprint":4,"task":"T-008","event":"merged","detail":"squash into main"}
+{"ts":"2026-04-26T10:03:00Z","run":4,"sprint":4,"task":"T-009","event":"branch_created","detail":"feat/t-009-vitest-localstorage-mock"}
+{"ts":"2026-04-26T10:03:10Z","run":4,"sprint":4,"task":"T-009","event":"investigation","detail":"navigation.test.tsx already 5/5 passing on jsdom 29 / vitest 4 — bug stale"}
+{"ts":"2026-04-26T10:03:30Z","run":4,"sprint":4,"task":"T-009","event":"code_complete","detail":"defensive Storage shim + cross-test cleanup; 17/17 still pass"}
+{"ts":"2026-04-26T10:03:40Z","run":4,"sprint":4,"task":"T-009","event":"pr_created","detail":"#36"}
+{"ts":"2026-04-26T10:03:50Z","run":4,"sprint":4,"task":"T-009","event":"merged","detail":"squash into main"}
+{"ts":"2026-04-26T10:04:00Z","run":4,"sprint":4,"task":"T-010","event":"branch_created","detail":"feat/t-010-waitlist-form"}
+{"ts":"2026-04-26T10:04:30Z","run":4,"sprint":4,"task":"T-010","event":"code_complete","detail":"WaitlistForm + analytics + 5 unit tests; 22/22 pass"}
+{"ts":"2026-04-26T10:04:40Z","run":4,"sprint":4,"task":"T-010","event":"pr_created","detail":"#37"}
+{"ts":"2026-04-26T10:04:50Z","run":4,"sprint":4,"task":"T-010","event":"merged","detail":"squash into main"}
+{"ts":"2026-04-26T10:05:00Z","run":4,"sprint":4,"event":"sprint_completed","detail":"4/4 tasks merged"}

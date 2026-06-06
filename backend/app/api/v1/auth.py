@@ -4,7 +4,10 @@ Google OAuth 2.0 flow:
   GET /api/v1/auth/google/callback → exchange code → upsert user → JWT → frontend redirect
 """
 
+import secrets
+
 import httpx
+import pydantic
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -12,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import create_access_token
+from app.core.security import create_access_token, create_refresh_token, decode_refresh_token
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -22,16 +25,33 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = "openid email profile"
 
+# 32 bytes of entropy → 43-char URL-safe base64 token, well above CSRF-safe threshold
+_STATE_ENTROPY_BYTES = 32
+_STATE_TTL_SECONDS = 600  # 10 minutes
+_OAUTH_STATE_PREFIX = "oauth_state:"
+
+
+def _state_key(state: str) -> str:
+    return f"{_OAUTH_STATE_PREFIX}{state}"
+
 
 def _redirect_uri(request: Request) -> str:
-    """Build the OAuth callback URI dynamically from the incoming request base URL."""
-    base = str(request.base_url).rstrip("/")
+    """Build the OAuth callback URI. Use BACKEND_URL env var if set (required in production)."""
+    if settings.BACKEND_URL:
+        base = settings.BACKEND_URL.rstrip("/")
+    else:
+        base = str(request.base_url).rstrip("/")
     return f"{base}/api/v1/auth/google/callback"
 
 
 @router.get("/google")
 async def google_login(request: Request):
     """Redirect user to Google OAuth consent screen."""
+    redis = request.app.state.redis
+
+    state = secrets.token_urlsafe(_STATE_ENTROPY_BYTES)
+    await redis.set(_state_key(state), "1", ex=_STATE_TTL_SECONDS)
+
     redirect_uri = _redirect_uri(request)
     params = (
         f"?client_id={settings.GOOGLE_CLIENT_ID}"
@@ -40,6 +60,7 @@ async def google_login(request: Request):
         f"&scope={SCOPES.replace(' ', '%20')}"
         f"&access_type=offline"
         f"&prompt=select_account"
+        f"&state={state}"
     )
     return RedirectResponse(url=GOOGLE_AUTH_URL + params)
 
@@ -49,11 +70,20 @@ async def google_callback(
     request: Request,
     code: str | None = None,
     error: str | None = None,
+    state: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Exchange authorization code for tokens, upsert user, issue JWT."""
     if error or not code:
-        raise HTTPException(status_code=400, detail=f"OAuth error: {error or 'missing code'}")
+        raise HTTPException(status_code=401, detail=f"OAuth error: {error or 'missing code'}")
+
+    # Validate CSRF state parameter — use Redis for multi-replica safety
+    if not state:
+        raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
+    redis = request.app.state.redis
+    deleted = await redis.delete(_state_key(state))
+    if not deleted:
+        raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
 
     redirect_uri = _redirect_uri(request)
 
@@ -71,7 +101,7 @@ async def google_callback(
         )
 
     if token_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to exchange OAuth code")
+        raise HTTPException(status_code=401, detail="Failed to exchange OAuth code")
 
     tokens = token_resp.json()
     access_token = tokens.get("access_token")
@@ -84,7 +114,7 @@ async def google_callback(
         )
 
     if userinfo_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to fetch user info from Google")
+        raise HTTPException(status_code=401, detail="Failed to fetch user info from Google")
 
     userinfo = userinfo_resp.json()
     google_id = userinfo.get("sub")
@@ -109,6 +139,21 @@ async def google_callback(
         user.name = name
         await db.commit()
 
-    jwt_token = create_access_token(user.id)
-    frontend_redirect = f"{settings.FRONTEND_URL}/auth/callback?token={jwt_token}"
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+    frontend_redirect = (
+        f"{settings.FRONTEND_URL}/auth/callback"
+        f"?token={access_token}&refresh_token={refresh_token}"
+    )
     return RedirectResponse(url=frontend_redirect)
+
+
+class RefreshRequest(pydantic.BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh")
+async def refresh_access_token(body: RefreshRequest):
+    """Exchange a valid refresh token for a new access token."""
+    user_id = decode_refresh_token(body.refresh_token)
+    return {"access_token": create_access_token(user_id), "token_type": "bearer"}
