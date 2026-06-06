@@ -20,3 +20,4 @@
 {"ts":"2026-04-26T10:04:40Z","run":4,"sprint":4,"task":"T-010","event":"pr_created","detail":"#37"}
 {"ts":"2026-04-26T10:04:50Z","run":4,"sprint":4,"task":"T-010","event":"merged","detail":"squash into main"}
 {"ts":"2026-04-26T10:05:00Z","run":4,"sprint":4,"event":"sprint_completed","detail":"4/4 tasks merged"}
+{"ts":"2026-06-06","run":5,"sprint":5,"task":"T-014","event":"merged","detail":"#44 dep triage; 9 dependabot applied, 4 deferred"}

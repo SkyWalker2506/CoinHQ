@@ -29,3 +29,21 @@ Append-only ADR log for forge-driven decisions. Each decision is dated and refer
 - **Why:** Closes the dead CTA loop without scaffolding a half-built endpoint. Plausible captures the durable signal even when storage is blocked.
 - **Reverse trigger:** When the real endpoint lands, replace the localStorage write with a `POST` and add an integration test. The form's existing API surface remains stable.
 - **Etkisi:** PR #37.
+
+---
+
+## Run 5 — 2026-06-06
+
+### D005: JWT→httpOnly cookie migration deferred a 3rd time (now explicit manual-QA gate)
+- **Decision:** Still not auto-implemented by forge. Flagged as a manual-QA-gated sprint.
+- **Why:** The migration cannot be validated by automated tests alone — it changes the live OAuth callback redirect + cookie domain/SameSite behavior, which only a real browser auth round-trip confirms. Forge only auto-merges work whose correctness is provable by CI; merging this unattended risks locking users out of production.
+- **Plan:** Run as a supervised session: implement `/auth/refresh` cookie middleware + `Set-Cookie` on callback, swap `lib/api.ts` to credentials:'include', drop localStorage token reads, then manually verify a full Google login → portfolio fetch → refresh cycle before merge.
+- **Etkisi:** Not in Sprint 5 scope.
+
+### D006: Build waitlist backend now (reverse-trigger of D004 fired)
+- **Decision:** Implement real `POST /api/v1/waitlist` (T-011) + migrate `WaitlistForm` from localStorage-only to POST-with-fallback (T-015).
+- **Why:** D004 set the reverse trigger "when the real endpoint lands." Sprint 5 lands it. Keeps the form's API surface stable; localStorage remains a graceful fallback when the network/endpoint is unavailable.
+
+### D007: Dependabot triage splits safe vs breaking
+- **Decision:** Auto-merge only test-verifiable, non-breaking bumps (backend libs + GitHub Actions). Defer the three breaking frontend bumps — tailwindcss 3→4 (PR #14), recharts 2→3 (#13), eslint-config-next 14→15 (#12) — which need codemods + visual regression QA.
+- **Why:** Major frontend bumps change build/output and need a browser sanity pass forge can't do unattended.

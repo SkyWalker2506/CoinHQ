@@ -1,0 +1,13 @@
+[
+  {
+    "run": 5,
+    "ts": "2026-06-06",
+    "total": 7.7,
+    "build": 9,
+    "gdd": 7,
+    "ui": null,
+    "functional": 7,
+    "code_quality": 8,
+    "performance": 8
+  }
+]
