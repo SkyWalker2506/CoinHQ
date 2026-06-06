@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Metadata } from "next";
 import type { SharedPortfolioView } from "@/lib/types";
 import FollowButton from "@/components/FollowButton";
@@ -6,38 +7,40 @@ import DelegateTradePanel from "@/components/DelegateTradePanel";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
-  const { token } = await params;
-  try {
-    const res = await fetch(`${BASE_URL}/api/v1/public/share/${token}`, { next: { revalidate: 60 } })
-    if (res.ok) {
-      const data = await res.json()
-      const profileName = data.profile_name || 'Crypto Portfolio'
-      return {
-        title: `${profileName} — CoinHQ`,
-        description: `View ${profileName}'s crypto portfolio on CoinHQ`,
-        openGraph: {
-          title: `${profileName} — CoinHQ`,
-          description: `View ${profileName}'s crypto portfolio`,
-        },
-      }
-    }
-  } catch {}
-  return {
-    title: 'Crypto Portfolio — CoinHQ',
-  }
-}
-
-async function fetchShare(token: string): Promise<SharedPortfolioView | null> {
+/**
+ * Per-request cached fetch — React cache() deduplicates calls within a single
+ * render pass (so generateMetadata and the page component share one round-trip),
+ * while `next: { revalidate: 300 }` keeps the ISR cache warm for 5 minutes.
+ */
+const fetchShare = cache(async (token: string): Promise<SharedPortfolioView | null> => {
   try {
     const res = await fetch(`${BASE_URL}/api/v1/public/share/${token}`, {
-      next: { revalidate: 60 },
+      next: { revalidate: 300 },
     });
     if (!res.ok) return null;
-    return res.json();
+    return res.json() as Promise<SharedPortfolioView>;
   } catch {
     return null;
   }
+});
+
+export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
+  const { token } = await params;
+  const data = await fetchShare(token);
+  if (data) {
+    const profileName = data.profile_name || 'Crypto Portfolio';
+    return {
+      title: `${profileName} — CoinHQ`,
+      description: `View ${profileName}'s crypto portfolio on CoinHQ`,
+      openGraph: {
+        title: `${profileName} — CoinHQ`,
+        description: `View ${profileName}'s crypto portfolio`,
+      },
+    };
+  }
+  return {
+    title: 'Crypto Portfolio — CoinHQ',
+  };
 }
 
 function fmt(val: number | null | undefined, prefix = "$"): string {

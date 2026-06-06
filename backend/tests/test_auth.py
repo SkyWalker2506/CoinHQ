@@ -165,6 +165,74 @@ class TestOAuthStateLifecycle:
         assert exc.value.status_code == 403
 
 
+class TestOAuthStateEntropy:
+    """Regression tests for OAuth CSRF state randomness (T-012)."""
+
+    @pytest.mark.asyncio
+    async def test_state_length_at_least_43_chars(self):
+        """secrets.token_urlsafe(32) produces a 43-char URL-safe token."""
+        import re
+
+        from app.api.v1.auth import google_login
+
+        redis = _StatefulRedisStub()
+        login_request = _make_request_with_redis(redis)
+        login_request.base_url = "http://test/"
+        response = await google_login(request=login_request)
+
+        # Extract state from the redirect URL
+        redirect_url = response.headers["location"]
+        match = re.search(r"[?&]state=([^&]+)", redirect_url)
+        assert match, "state param not found in redirect URL"
+        state = match.group(1)
+        assert len(state) >= 43, f"state too short: {len(state)}"
+
+    @pytest.mark.asyncio
+    async def test_state_contains_only_urlsafe_chars(self):
+        """State must only contain URL-safe base64 characters [A-Za-z0-9_-]."""
+        import re
+
+        from app.api.v1.auth import google_login
+
+        redis = _StatefulRedisStub()
+        login_request = _make_request_with_redis(redis)
+        login_request.base_url = "http://test/"
+        response = await google_login(request=login_request)
+
+        redirect_url = response.headers["location"]
+        match = re.search(r"[?&]state=([^&]+)", redirect_url)
+        assert match, "state param not found in redirect URL"
+        state = match.group(1)
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", state), (
+            f"state contains non-URL-safe chars: {state!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_successive_logins_produce_unique_states(self):
+        """Two successive logins must generate different state values."""
+        import re
+
+        from app.api.v1.auth import google_login
+
+        def _get_state(response) -> str:
+            redirect_url = response.headers["location"]
+            match = re.search(r"[?&]state=([^&]+)", redirect_url)
+            assert match, "state param not found"
+            return match.group(1)
+
+        redis1 = _StatefulRedisStub()
+        req1 = _make_request_with_redis(redis1)
+        req1.base_url = "http://test/"
+        r1 = await google_login(request=req1)
+
+        redis2 = _StatefulRedisStub()
+        req2 = _make_request_with_redis(redis2)
+        req2.base_url = "http://test/"
+        r2 = await google_login(request=req2)
+
+        assert _get_state(r1) != _get_state(r2), "two logins produced identical states"
+
+
 class TestRefreshAccessToken:
     @pytest.mark.asyncio
     async def test_valid_refresh_token_returns_new_access_token(self):
