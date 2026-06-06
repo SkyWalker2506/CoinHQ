@@ -1,5 +1,5 @@
 import useSWR from 'swr'
-import type { TradeOrder } from '@/lib/types'
+import type { TradeOrder, PortfolioSnapshot } from '@/lib/types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -19,6 +19,16 @@ export function usePortfolio(profileId: number) {
 export function useProfiles() {
   const { data, error, isLoading } = useSWR(`${BASE_URL}/api/v1/profiles/`, fetcher)
   return { profiles: data, error, isLoading }
+}
+
+export function usePortfolioHistory(profileId: number | null, days: number = 30) {
+  const { data, error, isLoading } = useSWR<PortfolioSnapshot[]>(
+    profileId != null
+      ? `${BASE_URL}/api/v1/profiles/${profileId}/history?days=${days}`
+      : null,
+    fetcher
+  )
+  return { history: data, error, isLoading }
 }
 
 export function useTradeHistory(profileId: number | null) {

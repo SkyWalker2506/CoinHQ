@@ -132,6 +132,11 @@ export interface SharedExchange {
   total_usd: number | null;
 }
 
+export interface PortfolioSnapshot {
+  created_at: string;
+  total_usd: number;
+}
+
 export interface SharedPortfolioView {
   token: string;
   profile_name: string;
