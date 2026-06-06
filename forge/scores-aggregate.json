@@ -21,5 +21,17 @@
     "code_quality": 9,
     "performance": null,
     "note": "single-task fastapi/pydantic migration; clean, fully test-verified"
+  },
+  {
+    "run": 7,
+    "ts": "2026-06-06",
+    "total": 8.4,
+    "build": 9,
+    "gdd": 9,
+    "ui": null,
+    "functional": 9,
+    "code_quality": 9,
+    "performance": 8,
+    "note": "personal-app pivot; 5 features (fastapi/pydantic, tx history, coingecko, snapshots, history chart); 187 backend + 46 frontend tests green"
   }
 ]
