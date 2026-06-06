@@ -14,6 +14,7 @@ import { PortfolioSkeleton } from "@/components/SkeletonCard";
 import { Navigation } from "@/components/Navigation";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import TradeHistory from "@/components/TradeHistory";
+import RealizedPnL from "@/components/RealizedPnL";
 
 const AllocationChart = dynamic(() => import("@/components/AllocationChart"), { ssr: false });
 const PortfolioHistoryChart = dynamic(() => import("@/components/PortfolioHistoryChart"), { ssr: false });
@@ -107,6 +108,14 @@ export default function DashboardPage() {
             <AllocationChart exchanges={exchanges} />
             <ExchangeList exchanges={exchanges} />
           </div>
+        </div>
+      )}
+
+      {/* Realized P&L */}
+      {!loading && portfolio && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-white mb-2">Realized P&amp;L</h2>
+          <RealizedPnL profileId={typeof selectedProfileId === "number" ? selectedProfileId : null} />
         </div>
       )}
 

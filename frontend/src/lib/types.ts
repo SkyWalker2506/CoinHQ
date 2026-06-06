@@ -137,6 +137,24 @@ export interface PortfolioSnapshot {
   total_usd: number;
 }
 
+// ── Realized P&L ─────────────────────────────────────────────────────────────
+
+export interface PnlAsset {
+  base_asset: string;
+  current_qty: number;
+  avg_cost: number | null;
+  realized_pnl_usd: number;
+  total_bought_usd: number;
+  total_sold_usd: number;
+  buy_count: number;
+  sell_count: number;
+}
+
+export interface PnlResponse {
+  assets: PnlAsset[];
+  total_realized_pnl_usd: number;
+}
+
 export interface SharedPortfolioView {
   token: string;
   profile_name: string;
