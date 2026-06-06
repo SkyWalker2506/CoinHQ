@@ -13,6 +13,7 @@ import Link from "next/link";
 import { PortfolioSkeleton } from "@/components/SkeletonCard";
 import { Navigation } from "@/components/Navigation";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import TradeHistory from "@/components/TradeHistory";
 
 const AllocationChart = dynamic(() => import("@/components/AllocationChart"), { ssr: false });
 
@@ -101,6 +102,14 @@ export default function DashboardPage() {
             <AllocationChart exchanges={exchanges} />
             <ExchangeList exchanges={exchanges} />
           </div>
+        </div>
+      )}
+
+      {/* Trade History */}
+      {!loading && portfolio && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-white mb-2">Recent Trades</h2>
+          <TradeHistory profileId={typeof selectedProfileId === "number" ? selectedProfileId : null} />
         </div>
       )}
 
