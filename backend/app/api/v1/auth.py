@@ -25,6 +25,8 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = "openid email profile"
 
+# 32 bytes of entropy → 43-char URL-safe base64 token, well above CSRF-safe threshold
+_STATE_ENTROPY_BYTES = 32
 _STATE_TTL_SECONDS = 600  # 10 minutes
 _OAUTH_STATE_PREFIX = "oauth_state:"
 
@@ -47,7 +49,7 @@ async def google_login(request: Request):
     """Redirect user to Google OAuth consent screen."""
     redis = request.app.state.redis
 
-    state = secrets.token_urlsafe(32)
+    state = secrets.token_urlsafe(_STATE_ENTROPY_BYTES)
     await redis.set(_state_key(state), "1", ex=_STATE_TTL_SECONDS)
 
     redirect_uri = _redirect_uri(request)
