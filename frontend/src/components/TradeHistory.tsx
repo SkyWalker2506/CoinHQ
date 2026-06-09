@@ -49,7 +49,7 @@ function StatusBadge({ status, error }: { status: TradeOrder["status"]; error: s
 
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold capitalize ${cls}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-semibold capitalize ${cls}`}
       title={status === "failed" && error ? error : undefined}
     >
       {status}
@@ -104,7 +104,7 @@ export default function TradeHistory({ profileId }: TradeHistoryProps) {
         className="mt-4 space-y-2"
       >
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-12 bg-gray-800 rounded animate-pulse" />
+          <div key={i} className="h-12 bg-gray-800 rounded-sm animate-pulse" />
         ))}
       </div>
     );

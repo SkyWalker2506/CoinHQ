@@ -84,7 +84,7 @@ function ExchangeItem({
                   <p className="text-sm font-semibold text-white flex items-center gap-1.5">
                     {balance.asset}
                     {noPriceBadge && (
-                      <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded font-normal">no price</span>
+                      <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded-sm font-normal">no price</span>
                     )}
                   </p>
                   <p className="text-xs text-gray-500">{formatAmount(balance.total)}</p>
@@ -190,7 +190,7 @@ export default function ExchangeList({ exchanges, onAddKey }: Props) {
           placeholder="Search coin (BTC, ETH…)"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-hidden focus:border-blue-500"
         />
         {search && (
           <button
