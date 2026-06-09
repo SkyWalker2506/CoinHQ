@@ -20,7 +20,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-lg w-full mx-4">
         <div className="flex gap-2 mb-6">
           {steps.map((s, i) => (
-            <div key={s.id} className={`h-1 flex-1 rounded ${i <= step ? 'bg-blue-500' : 'bg-gray-700'}`} />
+            <div key={s.id} className={`h-1 flex-1 rounded-sm ${i <= step ? 'bg-blue-500' : 'bg-gray-700'}`} />
           ))}
         </div>
         <h2 className="text-xl font-bold text-white mb-2">{steps[step].title}</h2>

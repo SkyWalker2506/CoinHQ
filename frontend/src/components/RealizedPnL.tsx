@@ -77,7 +77,7 @@ export default function RealizedPnL({ profileId }: RealizedPnLProps) {
         className="mt-4 space-y-2"
       >
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-10 bg-gray-800 rounded animate-pulse" />
+          <div key={i} className="h-10 bg-gray-800 rounded-sm animate-pulse" />
         ))}
       </div>
     );

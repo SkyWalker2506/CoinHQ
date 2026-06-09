@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { SharedPortfolioView } from "@/lib/types";
 import FollowButton from "@/components/FollowButton";
 import ShareViewTracker from "@/components/ShareViewTracker";
@@ -182,9 +183,9 @@ export default async function SharePage({
 
         <div className="mt-8 pt-6 border-t border-gray-800 text-center">
           <p className="text-gray-500 text-sm mb-3">Track your own crypto portfolio</p>
-          <a href="/" className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors">
+          <Link href="/" className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors">
             Start with CoinHQ — Free
-          </a>
+          </Link>
           <p className="text-gray-600 text-xs mt-3">Powered by CoinHQ</p>
         </div>
       </main>

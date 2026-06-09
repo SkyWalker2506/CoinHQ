@@ -143,7 +143,7 @@ export default function PortfolioHistoryChart({ profileId }: PortfolioHistoryCha
           aria-label="Loading portfolio history"
           className="h-48 flex items-center justify-center"
         >
-          <div className="h-48 w-full bg-gray-800 rounded animate-pulse" />
+          <div className="h-48 w-full bg-gray-800 rounded-sm animate-pulse" />
         </div>
       )}
 

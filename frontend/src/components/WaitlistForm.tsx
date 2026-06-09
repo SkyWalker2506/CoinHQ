@@ -163,7 +163,7 @@ export default function WaitlistForm({
               setMessage('')
             }
           }}
-          className="flex-1 min-w-0 rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+          className="flex-1 min-w-0 rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-white placeholder-gray-500 focus:outline-hidden focus:border-blue-500"
           disabled={state === 'submitting'}
         />
         <button
