@@ -67,7 +67,7 @@ export default function AllocationChart({ exchanges }: Props) {
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number) => [formatUsd(value), "Value"]}
+              formatter={(value) => [formatUsd(Number(value)), "Value"] as [string, string]}
               contentStyle={{ backgroundColor: "#111827", border: "1px solid #374151", borderRadius: "8px", fontSize: "13px" }}
             />
           </PieChart>
