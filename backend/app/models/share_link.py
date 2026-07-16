@@ -1,7 +1,7 @@
 import secrets
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -20,11 +20,13 @@ class ShareLink(Base):
     show_exchange_names: Mapped[bool] = mapped_column(Boolean, default=False)
     show_allocation_pct: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Timezone-aware: the app writes datetime.now(UTC); a naive column makes
+    # asyncpg reject those tz-aware values on Postgres.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     view_count: Mapped[int] = mapped_column(default=0)
-    last_viewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)
     allow_follow: Mapped[bool] = mapped_column(Boolean, default=True)
 
