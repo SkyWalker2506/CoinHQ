@@ -19,8 +19,43 @@ _BINANCE_PRICE_CACHE_KEY = "binance:all_prices"
 _BINANCE_PRICE_TTL = 30  # seconds
 
 # Redis key for CoinGecko symbol→id map (large and stable, cache 24h)
-_CG_COIN_LIST_CACHE_KEY = "coingecko:coin_list"
+# v2: bump after adding curated id overrides so poisoned cached maps expire.
+_CG_COIN_LIST_CACHE_KEY = "coingecko:coin_list:v2"
 _CG_COIN_LIST_TTL = 86_400  # 24 hours
+
+# /coins/list is ordered alphabetically by id, NOT by market cap, so "first
+# match wins" can resolve a major symbol to a dust token (e.g. BTC → some
+# scam coin at $0.000005). Pin the majors to their canonical CoinGecko ids.
+_CG_ID_OVERRIDES: dict[str, str] = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "BNB": "binancecoin",
+    "XRP": "ripple",
+    "ADA": "cardano",
+    "DOGE": "dogecoin",
+    "TRX": "tron",
+    "DOT": "polkadot",
+    "LINK": "chainlink",
+    "LTC": "litecoin",
+    "AVAX": "avalanche-2",
+    "MATIC": "matic-network",
+    "POL": "polygon-ecosystem-token",
+    "SHIB": "shiba-inu",
+    "UNI": "uniswap",
+    "ATOM": "cosmos",
+    "XLM": "stellar",
+    "ETC": "ethereum-classic",
+    "NEAR": "near",
+    "APT": "aptos",
+    "ARB": "arbitrum",
+    "OP": "optimism",
+    "TON": "the-open-network",
+    "PEPE": "pepe",
+}
+
+# Stablecoins are $1 regardless of price source.
+_STABLECOINS = {"USDT": 1.0, "USDC": 1.0, "BUSD": 1.0, "FDUSD": 1.0, "TUSD": 1.0, "DAI": 1.0}
 
 # Redis key prefix for CoinGecko per-coin USD prices
 _CG_PRICE_CACHE_PREFIX = "coingecko:price:"
@@ -111,6 +146,10 @@ async def _get_coingecko_symbol_map(
         elif cg_id == sym.lower():
             # Exact lowercase-symbol == id is the canonical/well-known coin
             symbol_map[sym] = cg_id
+
+    # Curated overrides always win — the list is alphabetical, not market-cap,
+    # so majors would otherwise resolve to dust tokens with the same symbol.
+    symbol_map.update(_CG_ID_OVERRIDES)
 
     if symbol_map and redis_client is not None:
         try:
@@ -223,6 +262,12 @@ async def get_usd_prices(
     if not assets:
         return {}
 
+    # Demo mode is fully offline & deterministic: no live Binance/CoinGecko calls,
+    # so demos and E2E always see the same portfolio total.
+    if settings.DEMO_MODE:
+        from app.exchanges.demo import DEMO_PRICES
+        return {a: DEMO_PRICES[a] for a in assets if a in DEMO_PRICES}
+
     close_client = http_client is None
     client = http_client or httpx.AsyncClient(timeout=10)
 
@@ -254,6 +299,12 @@ async def get_usd_prices(
         result: dict[str, float] = {
             asset: all_prices[asset] for asset in assets if asset in all_prices
         }
+
+        # Stablecoins are $1 regardless of source (also covers the case where
+        # Binance is unreachable/geo-blocked and everything falls to CoinGecko).
+        for asset in assets:
+            if asset in _STABLECOINS:
+                result[asset] = _STABLECOINS[asset]
 
         # CoinGecko fallback for assets that Binance didn't price
         unpriced = [a for a in assets if a not in result]

@@ -21,7 +21,7 @@ const PortfolioHistoryChart = dynamic(() => import("@/components/PortfolioHistor
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { profiles = [] } = useProfiles();
+  const { profiles = [], isLoading: profilesLoading } = useProfiles();
   const [selectedProfileId, setSelectedProfileId] = useState<number | "aggregate">("aggregate");
   const [portfolio, setPortfolio] = useState<PortfolioResponse | AggregatePortfolioResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,9 +34,12 @@ export default function DashboardPage() {
   }, [router])
 
   useEffect(() => {
+    // Only first-run users (no profiles yet) see onboarding. Returning users
+    // who already have profiles are never forced through it.
+    if (profilesLoading) return
     const done = localStorage.getItem('onboarding_done')
-    if (!done) setShowOnboarding(true)
-  }, [])
+    if (!done && profiles.length === 0) setShowOnboarding(true)
+  }, [profilesLoading, profiles.length])
 
   useEffect(() => {
     setLoading(true);

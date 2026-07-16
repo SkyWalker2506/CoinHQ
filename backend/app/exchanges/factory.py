@@ -1,5 +1,6 @@
 import httpx
 
+from app.core.config import settings
 from app.exchanges.base import ExchangeAdapter
 
 
@@ -11,6 +12,9 @@ def get_adapter(
 ) -> ExchangeAdapter:
     """Return the appropriate exchange adapter."""
     exchange = exchange.lower()
+    if exchange == "demo" and settings.DEMO_MODE:
+        from app.exchanges.demo import DemoAdapter
+        return DemoAdapter(api_key, api_secret, http_client=http_client)
     if exchange == "binance":
         from app.exchanges.binance import BinanceAdapter
         return BinanceAdapter(api_key, api_secret, http_client=http_client)
@@ -37,3 +41,10 @@ def get_adapter(
 
 
 SUPPORTED_EXCHANGES = ["binance", "bybit", "okx", "coinbase", "kraken", "binancetr", "gateio"]
+
+
+def supported_exchanges() -> list[str]:
+    """Exchanges accepted by the API right now ("demo" only in DEMO_MODE)."""
+    if settings.DEMO_MODE:
+        return [*SUPPORTED_EXCHANGES, "demo"]
+    return list(SUPPORTED_EXCHANGES)
