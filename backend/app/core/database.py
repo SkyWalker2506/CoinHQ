@@ -16,9 +16,10 @@ def _engine_kwargs() -> dict:
         kwargs["connect_args"] = {"ssl": "require", "statement_cache_size": 0}
     # Serverless (Vercel sets VERCEL=1): don't keep a connection pool per function
     # instance — let the external pooler manage connections. Elsewhere use a real pool.
+    # SQLite (dev/demo/tests) accepts neither pool_size nor max_overflow.
     if os.getenv("VERCEL"):
         kwargs["poolclass"] = NullPool
-    else:
+    elif settings.DATABASE_URL.startswith("postgresql"):
         kwargs["pool_size"] = 10
         kwargs["max_overflow"] = 20
     return kwargs

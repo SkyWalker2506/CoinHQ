@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.limits import check_exchange_limit
 from app.core.logging import logger
 from app.core.security import encrypt, get_current_user
-from app.exchanges.factory import SUPPORTED_EXCHANGES, get_adapter
+from app.exchanges.factory import get_adapter, supported_exchanges
 from app.models.exchange_key import ExchangeKey
 from app.models.profile import Profile
 from app.models.user import User
@@ -73,10 +73,11 @@ async def add_key(
             detail="tier_limit: You have reached the exchange limit for your current plan. Upgrade to Premium for unlimited exchanges.",
         )
 
-    if new_exchange not in SUPPORTED_EXCHANGES:
+    allowed = supported_exchanges()
+    if new_exchange not in allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported exchange. Supported: {SUPPORTED_EXCHANGES}",
+            detail=f"Unsupported exchange. Supported: {allowed}",
         )
 
     # Validate key works before storing. A read-only key must reject ALL write

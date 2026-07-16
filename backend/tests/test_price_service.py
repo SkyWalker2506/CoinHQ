@@ -353,19 +353,20 @@ class TestCoinGeckoFallback:
     async def test_symbol_id_disambiguation_exact_match_preferred(self):
         """
         When multiple coins share a ticker, the one whose id == lowercased symbol
-        is preferred over the first match.
+        is preferred over the first match. Uses a ticker NOT in _CG_ID_OVERRIDES
+        so the disambiguation heuristic (not the curated override) is exercised.
         """
         binance_resp = _make_binance_resp([])
 
-        # 'xrp' appears first as 'xrp-legacy' then the canonical 'xrp'
+        # 'zzz' appears first as 'zzz-legacy' then the canonical 'zzz'
         coin_list_resp = _make_cg_coins_resp(
             [
-                {"id": "xrp-legacy", "symbol": "XRP", "name": "XRP Legacy"},
-                {"id": "xrp", "symbol": "XRP", "name": "XRP"},
+                {"id": "zzz-legacy", "symbol": "ZZZ", "name": "ZZZ Legacy"},
+                {"id": "zzz", "symbol": "ZZZ", "name": "ZZZ"},
             ]
         )
-        # Only the canonical id 'xrp' will be queried
-        cg_price_resp = _make_cg_price_resp({"xrp": {"usd": 0.5}})
+        # Only the canonical id 'zzz' will be queried
+        cg_price_resp = _make_cg_price_resp({"zzz": {"usd": 0.5}})
 
         async def mock_get(url, **kwargs):
             if "binance.com" in url:
@@ -375,8 +376,8 @@ class TestCoinGeckoFallback:
             if "simple/price" in url:
                 # Verify the canonical id was sent
                 params = kwargs.get("params", {})
-                assert "xrp" in params.get("ids", ""), (
-                    f"Expected canonical id 'xrp' in ids, got: {params}"
+                assert "zzz" in params.get("ids", ""), (
+                    f"Expected canonical id 'zzz' in ids, got: {params}"
                 )
                 return cg_price_resp
             raise AssertionError(f"Unexpected URL: {url}")
@@ -390,7 +391,48 @@ class TestCoinGeckoFallback:
         mock_redis.setex = AsyncMock()
 
         result = await get_usd_prices(
-            ["XRP"], http_client=mock_client, redis_client=mock_redis
+            ["ZZZ"], http_client=mock_client, redis_client=mock_redis
         )
 
-        assert result["XRP"] == pytest.approx(0.5)
+        assert result["ZZZ"] == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
+    async def test_curated_override_wins_over_first_match(self):
+        """
+        Majors are pinned via _CG_ID_OVERRIDES because /coins/list is alphabetical,
+        not market-cap ordered. BTC must resolve to 'bitcoin' even when a same-symbol
+        dust token appears first in the list.
+        """
+        binance_resp = _make_binance_resp([])
+        coin_list_resp = _make_cg_coins_resp(
+            [
+                {"id": "aaa-btc-scam", "symbol": "BTC", "name": "Fake BTC"},
+                {"id": "bitcoin", "symbol": "BTC", "name": "Bitcoin"},
+            ]
+        )
+        cg_price_resp = _make_cg_price_resp({"bitcoin": {"usd": 65000.0}})
+
+        async def mock_get(url, **kwargs):
+            if "binance.com" in url:
+                return binance_resp
+            if "coins/list" in url:
+                return coin_list_resp
+            if "simple/price" in url:
+                params = kwargs.get("params", {})
+                assert params.get("ids", "") == "bitcoin", (
+                    f"Override must pin BTC→bitcoin, got: {params}"
+                )
+                return cg_price_resp
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.aclose = AsyncMock()
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        result = await get_usd_prices(
+            ["BTC"], http_client=mock_client, redis_client=mock_redis
+        )
+        assert result["BTC"] == pytest.approx(65000.0)

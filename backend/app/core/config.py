@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "CoinHQ"
     DEBUG: bool = False
+    # Demo mode: enables the "demo" paper exchange (deterministic fake balances,
+    # simulated order fills). Never enable in production.
+    DEMO_MODE: bool = False
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://coinhq:coinhq@localhost:5432/coinhq"

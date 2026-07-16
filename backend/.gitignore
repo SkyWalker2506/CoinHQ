@@ -1,1 +1,5 @@
 .vercel
+
+# Redis dump artifact (local dev)
+dump.rdb
+*.rdb

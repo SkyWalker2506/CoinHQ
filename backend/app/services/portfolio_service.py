@@ -118,9 +118,19 @@ async def get_portfolio(
             data["cached"] = True
             return PortfolioResponse(**data)
 
+    # One balance fetch per exchange. A profile may hold BOTH a read_only and a
+    # trade key for the same exchange (same underlying account) — fetching each
+    # would double-count the portfolio. Prefer the read_only key for reads.
+    keys_by_exchange: dict[str, ExchangeKey] = {}
+    for key in keys:
+        existing = keys_by_exchange.get(key.exchange)
+        if existing is None or (existing.key_type != "read_only" and key.key_type == "read_only"):
+            keys_by_exchange[key.exchange] = key
+    dedup_keys = list(keys_by_exchange.values())
+
     # Fetch all exchange balances in parallel
     raw_results = await asyncio.gather(
-        *[_fetch_exchange_balance(key, http_client=http_client) for key in keys],
+        *[_fetch_exchange_balance(key, http_client=http_client) for key in dedup_keys],
         return_exceptions=True,
     )
 
