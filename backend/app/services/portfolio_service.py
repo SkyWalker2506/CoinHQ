@@ -111,8 +111,15 @@ async def get_portfolio(
     """Get portfolio for a single profile with Redis caching."""
     cache_key = f"portfolio:profile:{profile_id}"
 
+    # Cache is best-effort: an unreachable Redis (e.g. serverless without a
+    # configured REDIS_URL) must degrade to uncached fetches, never to a 500.
     if redis is not None:
-        cached = await redis.get(cache_key)
+        try:
+            cached = await redis.get(cache_key)
+        except Exception as exc:  # noqa: BLE001
+            _stdlib_logger.warning("Portfolio cache read failed: %s", exc)
+            cached = None
+            redis = None  # skip the cache write below too
         if cached:
             data = json.loads(cached)
             data["cached"] = True
@@ -168,11 +175,14 @@ async def get_portfolio(
     )
 
     if redis is not None:
-        await redis.setex(
-            cache_key,
-            settings.PORTFOLIO_CACHE_TTL,
-            response.model_dump_json(),
-        )
+        try:
+            await redis.setex(
+                cache_key,
+                settings.PORTFOLIO_CACHE_TTL,
+                response.model_dump_json(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _stdlib_logger.warning("Portfolio cache write failed: %s", exc)
 
     return response
 

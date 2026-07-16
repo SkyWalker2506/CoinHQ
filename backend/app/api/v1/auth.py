@@ -4,7 +4,10 @@ Google OAuth 2.0 flow:
   GET /api/v1/auth/google/callback → exchange code → upsert user → JWT → frontend redirect
 """
 
+import hashlib
+import hmac
 import secrets
+import time
 
 import httpx
 import pydantic
@@ -35,6 +38,41 @@ def _state_key(state: str) -> str:
     return f"{_OAUTH_STATE_PREFIX}{state}"
 
 
+# ── Stateless (HMAC-signed) state fallback ───────────────────────────────────
+# Used when Redis is unreachable (e.g. serverless without REDIS_URL) so login
+# still works. Trade-off vs the Redis store: no single-use guarantee — a state
+# can be replayed within its TTL. CSRF protection (unforgeable, expiring,
+# server-issued state) is preserved.
+_STATELESS_PREFIX = "sl1"
+
+
+def _sign_state(nonce: str, expires: int) -> str:
+    msg = f"{nonce}.{expires}".encode()
+    return hmac.new(settings.JWT_SECRET.encode(), msg, hashlib.sha256).hexdigest()[:32]
+
+
+def make_stateless_state() -> str:
+    nonce = secrets.token_urlsafe(16)
+    expires = int(time.time()) + _STATE_TTL_SECONDS
+    return f"{_STATELESS_PREFIX}.{nonce}.{expires}.{_sign_state(nonce, expires)}"
+
+
+def verify_stateless_state(state: str) -> bool:
+    try:
+        prefix, nonce, expires_s, sig = state.split(".")
+    except ValueError:
+        return False
+    if prefix != _STATELESS_PREFIX:
+        return False
+    try:
+        expires = int(expires_s)
+    except ValueError:
+        return False
+    if time.time() > expires:
+        return False
+    return hmac.compare_digest(sig, _sign_state(nonce, expires))
+
+
 def _redirect_uri(request: Request) -> str:
     """Build the OAuth callback URI. Use BACKEND_URL env var if set (required in production)."""
     if settings.BACKEND_URL:
@@ -49,8 +87,13 @@ async def google_login(request: Request):
     """Redirect user to Google OAuth consent screen."""
     redis = request.app.state.redis
 
+    # Prefer the Redis-backed single-use store; fall back to a stateless
+    # HMAC-signed state when Redis is unreachable so login keeps working.
     state = secrets.token_urlsafe(_STATE_ENTROPY_BYTES)
-    await redis.set(_state_key(state), "1", ex=_STATE_TTL_SECONDS)
+    try:
+        await redis.set(_state_key(state), "1", ex=_STATE_TTL_SECONDS)
+    except Exception:  # noqa: BLE001
+        state = make_stateless_state()
 
     redirect_uri = _redirect_uri(request)
     params = (
@@ -77,13 +120,20 @@ async def google_callback(
     if error or not code:
         raise HTTPException(status_code=401, detail=f"OAuth error: {error or 'missing code'}")
 
-    # Validate CSRF state parameter — use Redis for multi-replica safety
+    # Validate CSRF state parameter — Redis (single-use) or stateless HMAC fallback
     if not state:
         raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
-    redis = request.app.state.redis
-    deleted = await redis.delete(_state_key(state))
-    if not deleted:
-        raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
+    if state.startswith(f"{_STATELESS_PREFIX}."):
+        if not verify_stateless_state(state):
+            raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
+    else:
+        redis = request.app.state.redis
+        try:
+            deleted = await redis.delete(_state_key(state))
+        except Exception:  # noqa: BLE001
+            deleted = 0
+        if not deleted:
+            raise HTTPException(status_code=403, detail="Invalid OAuth state — possible CSRF attack")
 
     redirect_uri = _redirect_uri(request)
 

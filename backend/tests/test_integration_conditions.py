@@ -117,37 +117,38 @@ def app_state():
 
 @pytest.fixture
 async def client(app_state, monkeypatch):
-    # Deterministic crypto + demo exchange, restored on teardown.
+    # Deterministic crypto + demo exchange. try/finally so a setup failure
+    # (e.g. DB down) can never leak DEMO_MODE/ENCRYPTION_KEY into other files.
     old_demo, old_enc = settings.DEMO_MODE, settings.ENCRYPTION_KEY
     settings.DEMO_MODE = True
     settings.ENCRYPTION_KEY = _TEST_FERNET_KEY
     reset_fernet_cache()
+    try:
+        # Fresh cache + rate-limit counters per test.
+        app_state.redis.store.clear()
+        for lim in (app.state.limiter, share_api.limiter, portfolio_api.limiter):
+            try:
+                lim.reset()
+            except Exception:  # noqa: BLE001 — storage without reset support
+                pass
 
-    # Fresh cache + rate-limit counters per test.
-    app_state.redis.store.clear()
-    for lim in (app.state.limiter, share_api.limiter, portfolio_api.limiter):
-        try:
-            lim.reset()
-        except Exception:  # noqa: BLE001 — storage without reset support
-            pass
+        # Fixed prices — no network.
+        monkeypatch.setattr("app.services.portfolio_service.get_usd_prices", _fixed_prices)
+        monkeypatch.setattr("app.services.trade_service.get_usd_prices", _fixed_prices)
 
-    # Fixed prices — no network.
-    monkeypatch.setattr("app.services.portfolio_service.get_usd_prices", _fixed_prices)
-    monkeypatch.setattr("app.services.trade_service.get_usd_prices", _fixed_prices)
+        # Clean schema per test on the global engine.
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
 
-    # Clean schema per test on the global engine.
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-
-    await engine.dispose()
-    settings.DEMO_MODE = old_demo
-    settings.ENCRYPTION_KEY = old_enc
-    reset_fernet_cache()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        await engine.dispose()
+        settings.DEMO_MODE = old_demo
+        settings.ENCRYPTION_KEY = old_enc
+        reset_fernet_cache()
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

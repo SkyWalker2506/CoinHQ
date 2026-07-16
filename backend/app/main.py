@@ -50,6 +50,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    # Our own Vercel frontends (coinhq-*.vercel.app) are always allowed, so a
+    # fresh deploy works even before CORS_ORIGINS env is updated.
+    allow_origin_regex=r"^https://coinhq-[a-z0-9-]+\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Content-Type", "Authorization"],
