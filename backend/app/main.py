@@ -29,6 +29,10 @@ async def lifespan(app: FastAPI):
     app.state.http_client = httpx.AsyncClient(timeout=30.0)
     if settings.DEBUG:
         await init_db()
+    else:
+        # Serverless-safe self-migration (Postgres advisory-locked, best-effort).
+        from app.core.migrations import run_startup_migrations
+        await run_startup_migrations()
     yield
     # Shutdown
     await app.state.redis.aclose()
