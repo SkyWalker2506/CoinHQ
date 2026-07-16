@@ -19,7 +19,9 @@ import uuid
 from app.exchanges.base import ExchangeAdapter
 from app.schemas.portfolio import Balance
 
-# Canned prices used only to size simulated fills when no live price is passed.
+# Deterministic demo prices. Used both to size simulated fills and (in DEMO_MODE)
+# by the price service, so demos/E2E always see the same portfolio total.
+# MAIN preset total = .43*65000 + 3.25*3400 + 30*150 + 1500*1 + 800*.45 = 45360.
 DEMO_PRICES: dict[str, float] = {
     "BTC": 65_000.0,
     "ETH": 3_400.0,

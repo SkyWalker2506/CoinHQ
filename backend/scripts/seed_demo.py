@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E402
 
+from app.core.config import settings  # noqa: E402
 from app.core.database import Base, engine  # noqa: E402
 from app.core.security import create_access_token, encrypt  # noqa: E402
 from app.models import (  # noqa: E402
@@ -59,7 +60,27 @@ def _key(profile_id: int, marker: str, key_type: str) -> ExchangeKey:
     )
 
 
+def _assert_safe_target() -> None:
+    """Refuse to run the destructive reset against anything but a demo/test DB.
+
+    This script drops and recreates ALL tables, so guard against ever pointing it
+    at a real database (e.g. a shell that already exports a production
+    DATABASE_URL). Require DEMO_MODE AND a sqlite/clearly-demo URL.
+    """
+    url = settings.DATABASE_URL
+    is_sqlite = url.startswith("sqlite")
+    looks_demo = any(marker in url for marker in ("demo", "test", ":memory:"))
+    if not settings.DEMO_MODE:
+        raise SystemExit("Refusing to seed: DEMO_MODE is not enabled.")
+    if not (is_sqlite or looks_demo):
+        raise SystemExit(
+            f"Refusing to run the destructive demo seed against {url!r}: "
+            "use a sqlite/demo DATABASE_URL (name must contain 'demo' or 'test')."
+        )
+
+
 async def seed() -> dict:
+    _assert_safe_target()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)

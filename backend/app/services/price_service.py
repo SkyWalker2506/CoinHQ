@@ -262,6 +262,12 @@ async def get_usd_prices(
     if not assets:
         return {}
 
+    # Demo mode is fully offline & deterministic: no live Binance/CoinGecko calls,
+    # so demos and E2E always see the same portfolio total.
+    if settings.DEMO_MODE:
+        from app.exchanges.demo import DEMO_PRICES
+        return {a: DEMO_PRICES[a] for a in assets if a in DEMO_PRICES}
+
     close_client = http_client is None
     client = http_client or httpx.AsyncClient(timeout=10)
 
