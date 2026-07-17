@@ -1,5 +1,5 @@
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,17 +13,24 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://coinhq:coinhq@localhost:5432/coinhq"
+    # Escape hatch for hosts where the DATABASE_URL env var is already set (and
+    # can't be changed via the tools at hand): a value baked into the deployed
+    # .env under this name wins, because env vars normally shadow .env. Empty =
+    # ignored.
+    DATABASE_URL_OVERRIDE: str = ""
 
-    @field_validator("DATABASE_URL")
+    @field_validator("DATABASE_URL", "DATABASE_URL_OVERRIDE")
     @classmethod
     def _force_asyncpg_driver(cls, v: str) -> str:
-        """Normalize the DB URL to the async driver.
+        """Normalize a Postgres URL to the async driver.
 
-        Managed hosts (Railway/Heroku/Render) inject `postgres://` or
+        Managed hosts (Railway/Heroku/Render/Supabase) inject `postgres://` or
         `postgresql://`, but the app + Alembic use SQLAlchemy's async engine which
         needs `postgresql+asyncpg://`. Also strip libpq-only query params (e.g.
         sslmode) that asyncpg does not understand.
         """
+        if not v:
+            return v
         if v.startswith("postgres://"):
             v = "postgresql://" + v[len("postgres://"):]
         if v.startswith("postgresql://"):
@@ -31,6 +38,12 @@ class Settings(BaseSettings):
         if v.startswith("postgresql+asyncpg://") and "?" in v:
             v = v.split("?", 1)[0]
         return v
+
+    @model_validator(mode="after")
+    def _apply_db_override(self) -> "Settings":
+        if self.DATABASE_URL_OVERRIDE:
+            self.DATABASE_URL = self.DATABASE_URL_OVERRIDE
+        return self
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
