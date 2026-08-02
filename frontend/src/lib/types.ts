@@ -49,7 +49,10 @@ export interface AggregatePortfolioResponse {
   asset_totals: Record<string, number>;
 }
 
-export type SupportedExchange = "binance" | "bybit" | "okx" | "coinbase" | "kraken" | "binancetr" | "gateio";
+// "demo" is an offline paper exchange, only offered when the deployment enables
+// it (NEXT_PUBLIC_DEMO_MODE) — it never connects to a real exchange.
+export type SupportedExchange =
+  | "binance" | "bybit" | "okx" | "coinbase" | "kraken" | "binancetr" | "gateio" | "demo";
 
 export type TradeDirection = "both" | "buy" | "sell";
 

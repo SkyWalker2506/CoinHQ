@@ -6,6 +6,10 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { KeyType, SupportedExchange } from "@/lib/types";
 import { events } from "@/lib/analytics";
 
+// Offered only when the deployment enables demo mode. The demo exchange is an
+// offline paper account: fake balances, simulated fills, no real exchange call.
+const DEMO_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 const EXCHANGES: { id: SupportedExchange; label: string }[] = [
   { id: "binance", label: "Binance" },
   { id: "binancetr", label: "Binance TR" },
@@ -14,6 +18,7 @@ const EXCHANGES: { id: SupportedExchange; label: string }[] = [
   { id: "coinbase", label: "Coinbase" },
   { id: "kraken", label: "Kraken" },
   { id: "gateio", label: "Gate.io" },
+  ...(DEMO_ENABLED ? [{ id: "demo" as SupportedExchange, label: "Demo (test hesabı)" }] : []),
 ];
 
 interface ExchangeInfo {
@@ -65,6 +70,13 @@ const EXCHANGE_INFO: Record<SupportedExchange, ExchangeInfo> = {
     appScheme: null,
     iosUrl: "https://apps.apple.com/app/gate-io-buy-bitcoin-crypto/id1294998195",
     androidUrl: "https://play.google.com/store/apps/details?id=com.gateio.gateio",
+  },
+  // Paper account — there is no real exchange site to open.
+  demo: {
+    webUrl: "https://github.com/SkyWalker2506/CoinHQ#readme",
+    appScheme: null,
+    iosUrl: null,
+    androidUrl: null,
   },
 };
 
