@@ -30,6 +30,10 @@ from app.services.price_service import get_usd_prices
 
 _SNAPSHOT_THROTTLE_HOURS = 1
 
+# Floor under venue-local quotes: an exchange has no USDT/USDT market, so its
+# own ticker feed cannot price the stablecoin the rest of the book is quoted in.
+_STABLECOIN_USD = {"USDT": 1.0, "USDC": 1.0, "BUSD": 1.0, "FDUSD": 1.0, "TUSD": 1.0, "DAI": 1.0}
+
 _stdlib_logger = logging.getLogger(__name__)
 
 
@@ -154,26 +158,33 @@ async def get_portfolio(
     )
 
     exchange_raw: list[tuple] = []
-    all_assets: list[str] = []
     for result in raw_results:
         if isinstance(result, Exception):
             _stdlib_logger.error("Exchange balance fetch raised exception: %s", result)
             continue
         if result is not None:
-            exchange_name, balances, local_prices = result
-            exchange_raw.append((exchange_name, balances, local_prices))
-            all_assets.extend(b.asset for b in balances)
+            exchange_raw.append(result)
 
-    # Global lookup only for assets no venue could price itself.
-    locally_priced = {a for _, _, lp in exchange_raw for a in lp}
-    unpriced = sorted(set(all_assets) - locally_priced)
+    # A venue that quotes its own markets is authoritative for everything it
+    # holds. If it has no market for an asset, that asset has no realisable
+    # price *there* — pricing it from somewhere else credits the holder with
+    # money they cannot get out. Gate.io closed its ALPACA, SRM, DREP, CLV and
+    # LINA pairs; valuing those from a global lookup inflated a $1,740
+    # portfolio to $2,862 while every asset Gate.io still quotes matched to
+    # the cent. Assets the venue cannot quote surface as "no price" instead.
+    global_assets = sorted(
+        {b.asset for _, balances, local in exchange_raw if not local for b in balances}
+    )
     global_prices = await get_usd_prices(
-        unpriced, http_client=http_client, redis_client=redis
+        global_assets, http_client=http_client, redis_client=redis
     )
 
-    # Venue-local quotes win over the global lookup for that venue's holdings.
     exchange_balances = [
-        _build_exchange_balance(exchange_name, balances, {**global_prices, **local_prices})
+        _build_exchange_balance(
+            exchange_name,
+            balances,
+            {**_STABLECOIN_USD, **local_prices} if local_prices else global_prices,
+        )
         for exchange_name, balances, local_prices in exchange_raw
     ]
 

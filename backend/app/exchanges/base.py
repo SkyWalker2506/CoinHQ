@@ -38,7 +38,14 @@ class ExchangeAdapter(ABC):
         exist as different tokens on different venues), so pricing a Gate.io
         balance from a global symbol lookup can be off by orders of magnitude.
 
-        Returning {} means "no opinion" — the caller falls back to the global
+        A non-empty return makes this adapter AUTHORITATIVE for everything it
+        holds: assets missing from the result are treated as having no
+        realisable price at this venue rather than falling back to a global
+        lookup. That is deliberate — an exchange that has closed a pair will
+        not let the holder sell, so crediting them with an outside price
+        overstates the portfolio.
+
+        Returning {} means "no opinion" and hands the whole venue to the global
         price service. Implementations must never raise.
         """
         return {}
