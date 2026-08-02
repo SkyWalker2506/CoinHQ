@@ -13,7 +13,13 @@ BINANCETR_BASE = "https://www.trbinance.com"
 
 
 class BinanceTRAdapter(ExchangeAdapter):
-    """Binance TR (trbinance.com) adapter — uses /open/v1/ REST API."""
+    """Binance TR (trbinance.com) adapter — uses /open/v1/ REST API.
+
+    Deliberately does not implement `get_prices`: Binance TR quotes its book in
+    lira, so its tickers would need a TRY/USD rate to be useful here, and that
+    rate would come from outside the venue — exactly the second-hand pricing
+    `get_prices` exists to avoid. Balances held here stay on the global lookup.
+    """
 
     def _sign(self, params: dict) -> str:
         query = urlencode(sorted(params.items()))

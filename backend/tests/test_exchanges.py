@@ -379,3 +379,111 @@ class TestBaseAdapter:
     def test_mask_key_long(self):
         adapter = BinanceAdapter("abcdefghijklmnop", "secret")
         assert adapter._mask_key() == "abcdef..."
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VENUE-LOCAL PRICING
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestVenueLocalPricing:
+    """`get_prices` makes an adapter authoritative for what it holds, so a wrong
+    or missing quote is a mispriced portfolio, not a cosmetic issue."""
+
+    @pytest.mark.asyncio
+    async def test_okx_reads_spot_usdt_tickers(self):
+        adapter = OKXAdapter("key", "secret")
+        payload = {"data": [
+            {"instId": "BTC-USDT", "last": "63108.6"},
+            {"instId": "ADA-USDT", "last": "0.1908"},
+            {"instId": "BTC-USDC", "last": "63100.0"},   # wrong quote currency
+            {"instId": "ETH-USDT", "last": "1857.68"},   # not requested
+        ]}
+        mock_client = _make_mock_client(_make_mock_response(payload))
+        with patch("app.exchanges.okx.httpx.AsyncClient", return_value=mock_client):
+            prices = await adapter.get_prices(["BTC", "ADA"])
+        assert prices == {"BTC": 63108.6, "ADA": 0.1908}
+
+    @pytest.mark.asyncio
+    async def test_bybit_reads_spot_usdt_tickers(self):
+        adapter = BybitAdapter("key", "secret")
+        payload = {"result": {"list": [
+            {"symbol": "BTCUSDT", "lastPrice": "63044.7"},
+            {"symbol": "SOLUSDT", "lastPrice": "72.88"},
+            {"symbol": "BTCUSDC", "lastPrice": "63040.0"},
+        ]}}
+        mock_client = _make_mock_client(_make_mock_response(payload))
+        with patch("app.exchanges.bybit.httpx.AsyncClient", return_value=mock_client):
+            prices = await adapter.get_prices(["BTC", "SOL"])
+        assert prices == {"BTC": 63044.7, "SOL": 72.88}
+
+    @pytest.mark.asyncio
+    async def test_kraken_resolves_internal_pair_codes_and_prefers_dollars(self):
+        adapter = KrakenAdapter("key", "secret")
+        pairs = {"result": {
+            "XXBTZUSD": {"base": "XXBT", "quote": "ZUSD"},
+            "XBTUSDT": {"base": "XXBT", "quote": "USDT"},
+            "ADAEUR": {"base": "ADA", "quote": "ZEUR"},
+            "ADAUSD": {"base": "ADA", "quote": "ZUSD"},
+        }}
+        tickers = {"result": {
+            "XXBTZUSD": {"c": ["63044.7", "0.01"]},
+            "XBTUSDT": {"c": ["63100.0", "0.01"]},
+            "ADAEUR": {"c": ["0.175", "10"]},
+            "ADAUSD": {"c": ["0.190577", "10"]},
+        }}
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[
+            _make_mock_response(pairs), _make_mock_response(tickers)
+        ])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        with patch("app.exchanges.kraken.httpx.AsyncClient", return_value=mock_client):
+            prices = await adapter.get_prices(["BTC", "ADA"])
+        # XXBT resolves to BTC, the dollar pair beats the USDT one, EUR is ignored.
+        assert prices == {"BTC": 63044.7, "ADA": 0.190577}
+
+    @pytest.mark.asyncio
+    async def test_coinbase_inverts_usd_exchange_rates(self):
+        adapter = CoinbaseAdapter("key", "secret")
+        payload = {"data": {"currency": "USD", "rates": {
+            "BTC": "0.0000158588",     # BTC per dollar
+            "ADA": "5.2438384897",
+            "DEAD": "0",               # no market
+        }}}
+        mock_client = _make_mock_client(_make_mock_response(payload))
+        with patch("app.exchanges.coinbase.httpx.AsyncClient", return_value=mock_client):
+            prices = await adapter.get_prices(["BTC", "ADA", "DEAD", "MISSING"])
+        assert prices["BTC"] == pytest.approx(63056.5, rel=1e-4)
+        assert prices["ADA"] == pytest.approx(0.19070, rel=1e-4)
+        assert "DEAD" not in prices, "a zero rate is no quote, not a free coin"
+        assert "MISSING" not in prices
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "adapter_cls,module",
+        [
+            (OKXAdapter, "app.exchanges.okx"),
+            (BybitAdapter, "app.exchanges.bybit"),
+            (KrakenAdapter, "app.exchanges.kraken"),
+            (CoinbaseAdapter, "app.exchanges.coinbase"),
+        ],
+    )
+    async def test_unreachable_venue_yields_no_opinion(self, adapter_cls, module):
+        """Never raise: an empty result hands the venue back to the global lookup."""
+        adapter = adapter_cls("key", "secret")
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=Exception("connection reset"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        with patch(f"{module}.httpx.AsyncClient", return_value=mock_client):
+            assert await adapter.get_prices(["BTC"]) == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "adapter_cls", [OKXAdapter, BybitAdapter, KrakenAdapter, CoinbaseAdapter]
+    )
+    async def test_no_assets_makes_no_request(self, adapter_cls):
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=AssertionError("should not be called"))
+        adapter = adapter_cls("key", "secret", http_client=mock_client)
+        assert await adapter.get_prices([]) == {}

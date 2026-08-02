@@ -38,6 +38,39 @@ class CoinbaseAdapter(ExchangeAdapter):
             async with httpx.AsyncClient(timeout=10) as client:
                 yield client
 
+    async def get_prices(self, assets: list[str]) -> dict[str, float]:
+        """Price against Coinbase's own USD exchange rates (public, no auth).
+
+        The endpoint answers "how much of this asset is one dollar worth", so
+        each rate is inverted. A zero or missing rate means Coinbase has no
+        quote and the asset is left out.
+        """
+        if not assets:
+            return {}
+        wanted = {a.upper() for a in assets}
+        try:
+            async with self._client() as client:
+                resp = await client.get(
+                    f"{COINBASE_BASE}/v2/exchange-rates",
+                    params={"currency": "USD"},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                rates = resp.json().get("data", {}).get("rates", {})
+        except Exception as exc:  # noqa: BLE001 — best-effort, caller falls back
+            logger.warning("exchange_price_fetch_failed", exchange="coinbase", error=str(exc))
+            return {}
+
+        prices: dict[str, float] = {}
+        for asset in wanted:
+            try:
+                per_usd = float(rates[asset])
+            except (TypeError, ValueError, KeyError):
+                continue
+            if per_usd > 0:
+                prices[asset] = 1 / per_usd
+        return prices
+
     async def get_balances(self) -> list[Balance]:
         path = "/api/v3/brokerage/accounts"
         timestamp = str(int(time.time()))

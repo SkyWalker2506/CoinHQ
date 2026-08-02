@@ -60,6 +60,45 @@ class KrakenAdapter(ExchangeAdapter):
             async with httpx.AsyncClient(timeout=10) as client:
                 yield client
 
+    async def get_prices(self, assets: list[str]) -> dict[str, float]:
+        """Price against Kraken's own USD/USDT tickers (public, no auth).
+
+        Kraken keys its pairs by internal codes (XXBTZUSD), so the tradable
+        pairs are fetched alongside the tickers to recover which asset each
+        pair is actually quoting.
+        """
+        if not assets:
+            return {}
+        wanted = {a.upper() for a in assets}
+        try:
+            async with self._client() as client:
+                pairs_resp = await client.get(f"{KRAKEN_BASE}/0/public/AssetPairs", timeout=20)
+                pairs_resp.raise_for_status()
+                pairs = pairs_resp.json().get("result", {})
+                ticker_resp = await client.get(f"{KRAKEN_BASE}/0/public/Ticker", timeout=20)
+                ticker_resp.raise_for_status()
+                tickers = ticker_resp.json().get("result", {})
+        except Exception as exc:  # noqa: BLE001 — best-effort, caller falls back
+            logger.warning("exchange_price_fetch_failed", exchange="kraken", error=str(exc))
+            return {}
+
+        prices: dict[str, float] = {}
+        for pair_key, meta in pairs.items():
+            quote = meta.get("quote")
+            if quote not in ("ZUSD", "USDT"):
+                continue
+            base = _normalize_kraken_asset(meta.get("base", ""))
+            if base not in wanted:
+                continue
+            # A dollar pair is the better quote; only fill from USDT otherwise.
+            if quote == "USDT" and base in prices:
+                continue
+            try:
+                prices[base] = float(tickers[pair_key]["c"][0])
+            except (TypeError, ValueError, KeyError, IndexError):
+                continue
+        return prices
+
     async def get_balances(self) -> list[Balance]:
         path = "/0/private/Balance"
         nonce = str(int(time.time() * 1000))

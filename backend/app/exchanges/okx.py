@@ -47,6 +47,38 @@ class OKXAdapter(ExchangeAdapter):
             "Content-Type": "application/json",
         }
 
+    async def get_prices(self, assets: list[str]) -> dict[str, float]:
+        """Price against OKX's own spot USDT tickers (public, no auth)."""
+        if not assets:
+            return {}
+        wanted = {a.upper() for a in assets}
+        try:
+            async with self._client() as client:
+                resp = await client.get(
+                    f"{OKX_BASE}/api/v5/market/tickers",
+                    params={"instType": "SPOT"},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                rows = resp.json().get("data", [])
+        except Exception as exc:  # noqa: BLE001 — best-effort, caller falls back
+            logger.warning("exchange_price_fetch_failed", exchange="okx", error=str(exc))
+            return {}
+
+        prices: dict[str, float] = {}
+        for row in rows:
+            inst = row.get("instId", "")
+            if not inst.endswith("-USDT"):
+                continue
+            base = inst[: -len("-USDT")]
+            if base not in wanted:
+                continue
+            try:
+                prices[base] = float(row["last"])
+            except (TypeError, ValueError, KeyError):
+                continue
+        return prices
+
     async def get_balances(self) -> list[Balance]:
         path = "/api/v5/account/balance"
         async with self._client() as client:
