@@ -10,9 +10,14 @@ from app.core.config import settings
 
 def _engine_kwargs() -> dict:
     kwargs: dict = {"echo": settings.DEBUG, "pool_pre_ping": True}
-    # Managed Postgres (Supabase) over the public internet: require TLS and disable
-    # asyncpg's prepared-statement cache so the URL works through the Supavisor pooler.
-    if "supabase." in settings.DATABASE_URL:
+    # Managed Postgres over the public internet (Supabase, Neon, …): require TLS
+    # and disable asyncpg's prepared-statement cache, which breaks through
+    # transaction poolers (Supavisor, PgBouncer). Local/dev DBs are left alone.
+    url = settings.DATABASE_URL
+    is_remote_pg = url.startswith("postgresql") and not any(
+        h in url for h in ("@localhost", "@127.0.0.1", "@postgres:")
+    )
+    if is_remote_pg:
         kwargs["connect_args"] = {"ssl": "require", "statement_cache_size": 0}
     # Serverless (Vercel sets VERCEL=1): don't keep a connection pool per function
     # instance — let the external pooler manage connections. Elsewhere use a real pool.
