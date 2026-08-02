@@ -33,6 +33,34 @@ class BinanceAdapter(ExchangeAdapter):
             async with httpx.AsyncClient(timeout=10) as client:
                 yield client
 
+    async def get_prices(self, assets: list[str]) -> dict[str, float]:
+        """Price against Binance's own USDT tickers (public, no auth)."""
+        if not assets:
+            return {}
+        wanted = {a.upper() for a in assets}
+        try:
+            async with self._client() as client:
+                resp = await client.get(f"{BINANCE_BASE}/api/v3/ticker/price", timeout=15)
+                resp.raise_for_status()
+                tickers = resp.json()
+        except Exception as exc:  # noqa: BLE001 — best-effort, caller falls back
+            logger.warning("exchange_price_fetch_failed", exchange="binance", error=str(exc))
+            return {}
+
+        prices: dict[str, float] = {}
+        for t in tickers:
+            symbol = t.get("symbol", "")
+            if not symbol.endswith("USDT"):
+                continue
+            base = symbol[: -len("USDT")]
+            if base not in wanted:
+                continue
+            try:
+                prices[base] = float(t["price"])
+            except (TypeError, ValueError, KeyError):
+                continue
+        return prices
+
     async def get_balances(self) -> list[Balance]:
         params = self._sign({"timestamp": int(time.time() * 1000)})
         async with self._client() as client:

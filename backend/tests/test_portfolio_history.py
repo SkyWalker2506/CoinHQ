@@ -171,7 +171,7 @@ class TestSnapshotThrottle:
         db.add = MagicMock(side_effect=lambda x: add_calls.append(x))
 
         async def mock_fetch(key, http_client=None):
-            return (key.exchange, [_make_balance_obj("BTC")])
+            return (key.exchange, [_make_balance_obj("BTC")], {})
 
         with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch):
             with patch("app.services.portfolio_service.get_usd_prices", return_value={"BTC": 50000.0}):
@@ -193,7 +193,7 @@ class TestSnapshotFailureSafety:
         db.execute = AsyncMock(side_effect=Exception("DB connection lost"))
 
         async def mock_fetch(key, http_client=None):
-            return (key.exchange, [_make_balance_obj("ETH", free=2.0)])
+            return (key.exchange, [_make_balance_obj("ETH", free=2.0)], {})
 
         with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch):
             with patch("app.services.portfolio_service.get_usd_prices", return_value={"ETH": 3000.0}):

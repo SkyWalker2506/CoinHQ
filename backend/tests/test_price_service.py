@@ -157,6 +157,15 @@ def _make_cg_coins_resp(coins: list[dict]) -> MagicMock:
     return mock_resp
 
 
+def _make_cg_search_resp(coins: list[dict] | None = None) -> MagicMock:
+    """/search answers with an object, not the bare list /coins/list returns."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"coins": coins or []}
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.status_code = 200
+    return mock_resp
+
+
 def _make_cg_price_resp(data: dict) -> MagicMock:
     mock_resp = MagicMock()
     mock_resp.json.return_value = data
@@ -213,6 +222,8 @@ class TestCoinGeckoFallback:
 
         call_responses = {
             "binance.com": binance_resp,
+            "coins/markets": _make_cg_coins_resp([]),
+            "search": _make_cg_search_resp(),
             "coins/list": coin_list_resp,
             "simple/price": cg_price_resp,
         }
@@ -247,6 +258,10 @@ class TestCoinGeckoFallback:
         async def mock_get(url, **kwargs):
             if "binance.com" in url:
                 return binance_resp
+            if "/search" in url:
+                return _make_cg_search_resp()
+            if "coins/markets" in url:
+                return _make_cg_coins_resp([])
             if "coins/list" in url:
                 call_count["coins_list"] += 1
                 raise httpx.TimeoutException("timeout")
@@ -284,6 +299,10 @@ class TestCoinGeckoFallback:
         async def mock_get(url, **kwargs):
             if "binance.com" in url:
                 return binance_resp
+            if "/search" in url:
+                return _make_cg_search_resp()
+            if "coins/markets" in url:
+                return _make_cg_coins_resp([])
             if "coins/list" in url:
                 return coin_list_resp
             if "simple/price" in url:
@@ -320,6 +339,10 @@ class TestCoinGeckoFallback:
         async def mock_get(url, **kwargs):
             if "binance.com" in url:
                 return binance_resp
+            if "/search" in url:
+                return _make_cg_search_resp()
+            if "coins/markets" in url:
+                return _make_cg_coins_resp([])
             if "coins/list" in url:
                 get_call_count["coins_list"] += 1
                 return coin_list_resp
@@ -371,6 +394,10 @@ class TestCoinGeckoFallback:
         async def mock_get(url, **kwargs):
             if "binance.com" in url:
                 return binance_resp
+            if "/search" in url:
+                return _make_cg_search_resp()
+            if "coins/markets" in url:
+                return _make_cg_coins_resp([])
             if "coins/list" in url:
                 return coin_list_resp
             if "simple/price" in url:
@@ -415,6 +442,10 @@ class TestCoinGeckoFallback:
         async def mock_get(url, **kwargs):
             if "binance.com" in url:
                 return binance_resp
+            if "/search" in url:
+                return _make_cg_search_resp()
+            if "coins/markets" in url:
+                return _make_cg_coins_resp([])
             if "coins/list" in url:
                 return coin_list_resp
             if "simple/price" in url:

@@ -36,7 +36,10 @@ const EXCHANGE_INFO: Record<SupportedExchange, ExchangeInfo> = {
     androidUrl: "https://play.google.com/store/apps/details?id=com.binance.dev",
   },
   binancetr: {
-    webUrl: "https://www.trbinance.com/account/api-management",
+    // Binance TR moved off trbinance.com and has no stable public deep link to
+    // API management — every /account/... and /my/settings/... path 404s. Send
+    // the user to the site root; the account menu has "API Yönetimi".
+    webUrl: "https://www.binance.tr/",
     appScheme: null,
     iosUrl: "https://apps.apple.com/tr/app/binance-tr/id1560111779",
     androidUrl: "https://play.google.com/store/apps/details?id=com.trbinance.app",
@@ -66,7 +69,8 @@ const EXCHANGE_INFO: Record<SupportedExchange, ExchangeInfo> = {
     androidUrl: "https://play.google.com/store/apps/details?id=com.kraken.trade",
   },
   gateio: {
-    webUrl: "https://www.gate.io/myaccount/api_key_manage",
+    // gate.io 301s to gate.com; link the destination directly.
+    webUrl: "https://www.gate.com/myaccount/api_key_manage",
     appScheme: null,
     iosUrl: "https://apps.apple.com/app/gate-io-buy-bitcoin-crypto/id1294998195",
     androidUrl: "https://play.google.com/store/apps/details?id=com.gateio.gateio",

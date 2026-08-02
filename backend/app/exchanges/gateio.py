@@ -40,6 +40,41 @@ class GateioAdapter(ExchangeAdapter):
             async with httpx.AsyncClient(timeout=10) as client:
                 yield client
 
+    async def get_prices(self, assets: list[str]) -> dict[str, float]:
+        """Price against Gate.io's own USDT tickers (public, no auth).
+
+        Gate.io lists many low-cap tokens whose tickers collide with unrelated
+        coins elsewhere, so its own quotes are the only correct source for
+        balances held here.
+        """
+        if not assets:
+            return {}
+        wanted = {a.upper() for a in assets}
+        try:
+            async with self._client() as client:
+                resp = await client.get(
+                    f"{GATEIO_BASE}{GATEIO_PREFIX}/spot/tickers", timeout=15
+                )
+                resp.raise_for_status()
+                tickers = resp.json()
+        except Exception as exc:  # noqa: BLE001 — best-effort, caller falls back
+            logger.warning("exchange_price_fetch_failed", exchange="gateio", error=str(exc))
+            return {}
+
+        prices: dict[str, float] = {}
+        for t in tickers:
+            pair = t.get("currency_pair", "")
+            if not pair.endswith("_USDT"):
+                continue
+            base = pair[: -len("_USDT")]
+            if base not in wanted:
+                continue
+            try:
+                prices[base] = float(t["last"])
+            except (TypeError, ValueError, KeyError):
+                continue
+        return prices
+
     async def get_balances(self) -> list[Balance]:
         path = f"{GATEIO_PREFIX}/spot/accounts"
         async with self._client() as client:

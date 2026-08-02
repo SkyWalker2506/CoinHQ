@@ -37,14 +37,26 @@ async def _fetch_exchange_balance(
     key: ExchangeKey,
     http_client: httpx.AsyncClient | None = None,
 ) -> tuple | None:
-    """Decrypt keys and fetch raw balances from an exchange (no pricing)."""
+    """Fetch balances plus this venue's own quotes for the assets it holds.
+
+    Venue-local prices come first because ticker symbols are not globally
+    unique — pricing a Gate.io balance from a global symbol lookup can land on
+    an unrelated token and be off by orders of magnitude.
+    """
     try:
         api_key = decrypt(key.encrypted_key)
         api_secret = decrypt(key.encrypted_secret)
         adapter = get_adapter(key.exchange, api_key, api_secret, http_client=http_client)
         balances = await adapter.get_balances()
         logger.info("api_key_used", key_id=key.id, exchange=key.exchange, profile_id=key.profile_id)
-        return (key.exchange, balances)
+        try:
+            local_prices = await adapter.get_prices([b.asset for b in balances])
+            if not isinstance(local_prices, dict):
+                local_prices = {}
+        except Exception as exc:  # noqa: BLE001 — pricing is best-effort
+            _stdlib_logger.warning("Local price fetch failed for %s: %s", key.exchange, exc)
+            local_prices = {}
+        return (key.exchange, balances, local_prices)
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         _stdlib_logger.error("Failed to fetch balance from %s (key_id=%s): %s", key.exchange, key.id, e)
         return None
@@ -148,17 +160,21 @@ async def get_portfolio(
             _stdlib_logger.error("Exchange balance fetch raised exception: %s", result)
             continue
         if result is not None:
-            exchange_name, balances = result
-            exchange_raw.append((exchange_name, balances))
+            exchange_name, balances, local_prices = result
+            exchange_raw.append((exchange_name, balances, local_prices))
             all_assets.extend(b.asset for b in balances)
 
-    prices = await get_usd_prices(
-        list(set(all_assets)), http_client=http_client, redis_client=redis
+    # Global lookup only for assets no venue could price itself.
+    locally_priced = {a for _, _, lp in exchange_raw for a in lp}
+    unpriced = sorted(set(all_assets) - locally_priced)
+    global_prices = await get_usd_prices(
+        unpriced, http_client=http_client, redis_client=redis
     )
 
+    # Venue-local quotes win over the global lookup for that venue's holdings.
     exchange_balances = [
-        _build_exchange_balance(exchange_name, balances, prices)
-        for exchange_name, balances in exchange_raw
+        _build_exchange_balance(exchange_name, balances, {**global_prices, **local_prices})
+        for exchange_name, balances, local_prices in exchange_raw
     ]
 
     total_usd = sum(eb.total_usd for eb in exchange_balances)

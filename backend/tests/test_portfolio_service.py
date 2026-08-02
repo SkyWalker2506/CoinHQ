@@ -36,7 +36,7 @@ async def test_get_portfolio_parallel_exchange_calls():
     async def mock_fetch_balance(key, http_client=None):
         nonlocal call_count
         call_count += 1
-        return (key.exchange, [_make_balance("BTC")])
+        return (key.exchange, [_make_balance("BTC")], {})
 
     with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch_balance):
         with patch(
@@ -60,7 +60,7 @@ async def test_get_portfolio_single_coingecko_call():
         return {"ETH": 3500.0}
 
     async def mock_fetch(key, http_client=None):
-        return (key.exchange, [_make_balance("ETH")])
+        return (key.exchange, [_make_balance("ETH")], {})
 
     with patch("app.services.portfolio_service.get_usd_prices", side_effect=mock_prices):
         with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch):
@@ -77,7 +77,7 @@ async def test_portfolio_exchange_failure_doesnt_break_others():
     async def mock_fetch(key, http_client=None):
         if key.exchange == "binance":
             raise Exception("Binance API error")
-        return (key.exchange, [_make_balance("ETH", free=1.0)])
+        return (key.exchange, [_make_balance("ETH", free=1.0)], {})
 
     with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch):
         with patch(
@@ -115,7 +115,7 @@ async def test_get_portfolio_uses_redis_cache():
     async def mock_fetch(key, http_client=None):
         nonlocal fetch_called
         fetch_called = True
-        return (key.exchange, [])
+        return (key.exchange, [], {})
 
     with patch("app.services.portfolio_service._fetch_exchange_balance", side_effect=mock_fetch):
         result = await get_portfolio(1, "test", [_make_key("binance")], redis=mock_redis)

@@ -4,8 +4,11 @@ Priority: Binance public API (no auth, 3500+ pairs) → CoinGecko fallback → $
 All prices are in USDT ≈ USD.
 """
 
+import asyncio
 import json
 import logging
+import time
+from typing import Any
 
 import httpx
 import redis.asyncio as aioredis
@@ -14,14 +17,43 @@ from app.core.config import settings
 
 _logger = logging.getLogger(__name__)
 
+# Process-local fallback cache. Redis is optional in this deployment, and
+# without any cache every portfolio load re-queries CoinGecko and trips its
+# free-tier rate limit. A warm serverless instance reuses this map; a cold one
+# simply refetches.
+_MEMO: dict[str, tuple[float, Any]] = {}
+
+
+def _memo_get(key: str) -> Any | None:
+    entry = _MEMO.get(key)
+    if entry is None:
+        return None
+    expires_at, value = entry
+    if time.time() > expires_at:
+        _MEMO.pop(key, None)
+        return None
+    return value
+
+
+def _memo_set(key: str, value: Any, ttl: int) -> None:
+    _MEMO[key] = (time.time() + ttl, value)
+
 # Redis key for full Binance price map (all pairs)
 _BINANCE_PRICE_CACHE_KEY = "binance:all_prices"
 _BINANCE_PRICE_TTL = 30  # seconds
 
 # Redis key for CoinGecko symbol→id map (large and stable, cache 24h)
 # v2: bump after adding curated id overrides so poisoned cached maps expire.
-_CG_COIN_LIST_CACHE_KEY = "coingecko:coin_list:v2"
+_CG_COIN_LIST_CACHE_KEY = "coingecko:coin_list:v3"
 _CG_COIN_LIST_TTL = 86_400  # 24 hours
+_CG_MARKET_PAGES = 4  # 250/page -> top 1000 by market cap (free tier friendly)
+
+# /search resolution for symbols below the ranked map. A symbol→id mapping is
+# effectively permanent, so cache it hard and query sparingly.
+_CG_SEARCH_CACHE_PREFIX = "coingecko:sym:"
+_CG_SEARCH_TTL = 604_800  # 7 days
+_CG_SEARCH_MAX_PER_CALL = 6
+_CG_SEARCH_DELAY_SECONDS = 1.5
 
 # /coins/list is ordered alphabetically by id, NOT by market cap, so "first
 # match wins" can resolve a major symbol to a dust token (e.g. BTC → some
@@ -99,22 +131,61 @@ async def _fetch_binance_all_prices(
     return prices
 
 
+async def _fetch_market_cap_symbol_map(http_client: httpx.AsyncClient) -> dict[str, str]:
+    """symbol→id for the top coins, ordered by market cap (highest wins).
+
+    Ticker symbols are not unique on CoinGecko: ATLAS, PUMP, GPT and many others
+    are reused by unrelated tokens. Ranking by market cap picks the coin a user
+    actually holds instead of whichever one sorts first alphabetically —
+    /coins/list is alphabetical, which previously priced Star Atlas ($0.00013)
+    as an unrelated $0.12 token, a 900x error.
+    """
+    symbol_map: dict[str, str] = {}
+    for page in range(1, _CG_MARKET_PAGES + 1):
+        try:
+            resp = await http_client.get(
+                f"{settings.COINGECKO_BASE_URL}/coins/markets",
+                params={
+                    "vs_currency": "usd",
+                    "order": "market_cap_desc",
+                    "per_page": 250,
+                    "page": page,
+                },
+                timeout=20,
+            )
+            if resp.status_code == 429:
+                _logger.warning("CoinGecko rate-limited on /coins/markets page %s", page)
+                break
+            resp.raise_for_status()
+            rows = resp.json()
+        except Exception as e:  # noqa: BLE001 — partial map is still useful
+            _logger.warning("CoinGecko /coins/markets page %s failed: %s", page, e)
+            break
+        if not rows:
+            break
+        for row in rows:
+            sym = (row.get("symbol") or "").upper()
+            cg_id = row.get("id") or ""
+            # Pages arrive in descending market cap, so the first time a symbol
+            # appears it is the largest coin using it.
+            if sym and cg_id and sym not in symbol_map:
+                symbol_map[sym] = cg_id
+    return symbol_map
+
+
 async def _get_coingecko_symbol_map(
     http_client: httpx.AsyncClient,
     redis_client: aioredis.Redis | None,
 ) -> dict[str, str]:
-    """
-    Return a symbol→coingecko_id map built from /coins/list.
+    """Return a symbol→coingecko_id map, preferring the highest-market-cap coin.
 
-    Disambiguation heuristic (best-effort fallback — not authoritative):
-      1. If an id exactly equals the lowercased symbol, prefer it.
-      2. Otherwise take the first match in the list (CoinGecko returns by
-         market-cap rank descending for well-known coins, so the first hit
-         is usually the most prominent one).
-    This is intentionally simple; the goal is to price dust/low-cap holdings
-    that Binance doesn't list, not to be a canonical coin registry.
+    Primary:  /coins/markets ranked by market cap (see above).
+    Fallback: /coins/list, where an id equal to the lowercased symbol is treated
+              as canonical and otherwise the first alphabetical match is taken —
+              only used when the ranked lookup is unavailable.
+    Curated overrides win over both.
     """
-    # Try Redis cache
+    # Try Redis cache, then the process-local fallback.
     if redis_client is not None:
         try:
             cached = await redis_client.get(_CG_COIN_LIST_CACHE_KEY)
@@ -123,43 +194,119 @@ async def _get_coingecko_symbol_map(
         except Exception as e:
             _logger.warning("Redis CoinGecko coin-list cache read failed: %s", e)
 
-    try:
-        resp = await http_client.get(
-            f"{settings.COINGECKO_BASE_URL}/coins/list",
-            timeout=15,
-        )
-        resp.raise_for_status()
-        coins: list[dict[str, str]] = resp.json()
-    except Exception as e:
-        _logger.warning("CoinGecko /coins/list fetch failed: %s", e)
-        return {}
+    memoized = _memo_get(_CG_COIN_LIST_CACHE_KEY)
+    if memoized:
+        return memoized
 
-    symbol_map: dict[str, str] = {}
-    for coin in coins:
-        sym = coin.get("symbol", "").upper()
-        cg_id = coin.get("id", "")
-        if not sym or not cg_id:
-            continue
-        if sym not in symbol_map:
-            # First occurrence wins unless a better match is found below
-            symbol_map[sym] = cg_id
-        elif cg_id == sym.lower():
-            # Exact lowercase-symbol == id is the canonical/well-known coin
-            symbol_map[sym] = cg_id
+    symbol_map = await _fetch_market_cap_symbol_map(http_client)
 
-    # Curated overrides always win — the list is alphabetical, not market-cap,
-    # so majors would otherwise resolve to dust tokens with the same symbol.
+    if not symbol_map:
+        try:
+            resp = await http_client.get(
+                f"{settings.COINGECKO_BASE_URL}/coins/list",
+                timeout=15,
+            )
+            resp.raise_for_status()
+            coins: list[dict[str, str]] = resp.json()
+        except Exception as e:
+            _logger.warning("CoinGecko /coins/list fetch failed: %s", e)
+            return {}
+
+        for coin in coins:
+            sym = coin.get("symbol", "").upper()
+            cg_id = coin.get("id", "")
+            if not sym or not cg_id:
+                continue
+            if sym not in symbol_map:
+                # First occurrence wins unless a better match is found below
+                symbol_map[sym] = cg_id
+            elif cg_id == sym.lower():
+                # Exact lowercase-symbol == id is the canonical/well-known coin
+                symbol_map[sym] = cg_id
+
+    # Curated overrides always win.
     symbol_map.update(_CG_ID_OVERRIDES)
 
-    if symbol_map and redis_client is not None:
-        try:
-            await redis_client.setex(
-                _CG_COIN_LIST_CACHE_KEY, _CG_COIN_LIST_TTL, json.dumps(symbol_map)
-            )
-        except Exception as e:
-            _logger.warning("Redis CoinGecko coin-list cache write failed: %s", e)
+    if symbol_map:
+        _memo_set(_CG_COIN_LIST_CACHE_KEY, symbol_map, _CG_COIN_LIST_TTL)
+        if redis_client is not None:
+            try:
+                await redis_client.setex(
+                    _CG_COIN_LIST_CACHE_KEY, _CG_COIN_LIST_TTL, json.dumps(symbol_map)
+                )
+            except Exception as e:
+                _logger.warning("Redis CoinGecko coin-list cache write failed: %s", e)
 
     return symbol_map
+
+
+async def _search_symbol_ids(
+    symbols: list[str],
+    http_client: httpx.AsyncClient,
+    redis_client: aioredis.Redis | None,
+) -> dict[str, str]:
+    """Resolve ids for symbols outside the market-cap ranked map, via /search.
+
+    /search returns matches ordered by market cap rank, so the first exact
+    symbol match is the coin a holder almost certainly means (ATLAS →
+    star-atlas rank 1784, not an unrelated token). Resolutions are cached hard
+    because a symbol→id mapping effectively never changes.
+
+    Deliberately capped and serialised: CoinGecko's free tier rate-limits
+    aggressively, and a partial answer beats a 429 storm. Unresolved symbols
+    are left unpriced rather than guessed.
+    """
+    resolved: dict[str, str] = {}
+    pending: list[str] = []
+
+    for sym in symbols:
+        key = f"{_CG_SEARCH_CACHE_PREFIX}{sym}"
+        cached = _memo_get(key)
+        if cached is None and redis_client is not None:
+            try:
+                raw = await redis_client.get(key)
+                cached = raw or None
+            except Exception:  # noqa: BLE001 — cache is best-effort
+                cached = None
+        if cached:
+            resolved[sym] = cached
+        else:
+            pending.append(sym)
+
+    for sym in pending[:_CG_SEARCH_MAX_PER_CALL]:
+        try:
+            resp = await http_client.get(
+                f"{settings.COINGECKO_BASE_URL}/search",
+                params={"query": sym},
+                timeout=15,
+            )
+            if resp.status_code == 429:
+                _logger.warning("CoinGecko /search rate-limited; leaving %s unpriced", sym)
+                break
+            resp.raise_for_status()
+            coins = resp.json().get("coins", [])
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("CoinGecko /search failed for %s: %s", sym, e)
+            continue
+
+        match = next(
+            (c for c in coins if (c.get("symbol") or "").upper() == sym.upper() and c.get("id")),
+            None,
+        )
+        if match is None:
+            continue
+        cg_id = match["id"]
+        resolved[sym] = cg_id
+        key = f"{_CG_SEARCH_CACHE_PREFIX}{sym}"
+        _memo_set(key, cg_id, _CG_SEARCH_TTL)
+        if redis_client is not None:
+            try:
+                await redis_client.setex(key, _CG_SEARCH_TTL, cg_id)
+            except Exception:  # noqa: BLE001
+                pass
+        await asyncio.sleep(_CG_SEARCH_DELAY_SECONDS)
+
+    return resolved
 
 
 async def _fetch_coingecko_prices(
@@ -185,6 +332,11 @@ async def _fetch_coingecko_prices(
         cg_id = symbol_map.get(sym.upper())
         if cg_id:
             sym_to_id[sym] = cg_id
+
+    # Small holdings sit below the ranked map; resolve those individually.
+    missing = [s for s in symbols if s not in sym_to_id]
+    if missing:
+        sym_to_id.update(await _search_symbol_ids(missing, http_client, redis_client))
 
     if not sym_to_id:
         return {}

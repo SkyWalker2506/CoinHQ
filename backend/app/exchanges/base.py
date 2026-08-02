@@ -30,6 +30,19 @@ class ExchangeAdapter(ABC):
         """
         ...
 
+    async def get_prices(self, assets: list[str]) -> dict[str, float]:
+        """USD(T) prices for `assets`, quoted by THIS exchange. Best-effort.
+
+        Prices must come from the venue that actually holds the balance:
+        ticker symbols are not globally unique (ATLAS, WOJAK, PUMP and friends
+        exist as different tokens on different venues), so pricing a Gate.io
+        balance from a global symbol lookup can be off by orders of magnitude.
+
+        Returning {} means "no opinion" — the caller falls back to the global
+        price service. Implementations must never raise.
+        """
+        return {}
+
     # ── Trading (Phase 2) ────────────────────────────────────────────────────
     # Default implementations refuse trading. Adapters that support spot trading
     # override these. Withdrawals/transfers are NEVER implemented.
