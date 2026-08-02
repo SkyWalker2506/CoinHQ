@@ -107,3 +107,53 @@ class TestPortfolioCacheDegradation:
 
         assert result.total_usd == pytest.approx(100.0)
         assert result.cached is False
+
+
+class TestHealthEndpoint:
+    """Redis is optional in production — it must not fail the health check."""
+
+    @pytest.mark.asyncio
+    async def test_dead_redis_still_healthy_when_db_ok(self):
+        import httpx
+
+        from app.main import app
+
+        app.state.redis = AsyncMock()
+        app.state.redis.ping = AsyncMock(side_effect=ConnectionError("refused"))
+
+        with patch("app.main.AsyncSessionLocal") as mock_sm:
+            session = AsyncMock()
+            session.execute = AsyncMock(return_value=None)
+            mock_sm.return_value.__aenter__ = AsyncMock(return_value=session)
+            mock_sm.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+                resp = await c.get("/health")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert "unavailable" in body["redis"]
+
+    @pytest.mark.asyncio
+    async def test_dead_db_is_degraded(self):
+        import httpx
+
+        from app.main import app
+
+        app.state.redis = AsyncMock()
+        app.state.redis.ping = AsyncMock(return_value=True)
+
+        with patch("app.main.AsyncSessionLocal") as mock_sm:
+            mock_sm.return_value.__aenter__ = AsyncMock(
+                side_effect=ConnectionError("db gone")
+            )
+            mock_sm.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+                resp = await c.get("/health")
+
+        assert resp.status_code == 503
+        assert resp.json()["status"] == "degraded"

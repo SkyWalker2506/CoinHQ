@@ -67,6 +67,12 @@ app.include_router(api_router)
 
 @app.get("/health")
 async def health(request: Request):
+    """Liveness/readiness.
+
+    The database is required — losing it means the app cannot serve. Redis is
+    optional (caching + OAuth state have working fallbacks), so an unreachable
+    Redis is reported but does NOT fail the check.
+    """
     checks: dict = {"status": "ok", "app": settings.APP_NAME, "db": "ok", "redis": "ok"}
 
     try:
@@ -79,8 +85,7 @@ async def health(request: Request):
     try:
         await request.app.state.redis.ping()
     except Exception as e:
-        checks["redis"] = f"error: {e}"
-        checks["status"] = "degraded"
+        checks["redis"] = f"unavailable (running without cache): {e}"
 
     status_code = 200 if checks["status"] == "ok" else 503
     return JSONResponse(content=checks, status_code=status_code)
