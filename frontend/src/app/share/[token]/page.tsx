@@ -75,7 +75,7 @@ export default async function SharePage({
     <div className="min-h-screen bg-gray-950 text-white">
       <ShareViewTracker token={token} />
       {/* Header */}
-      <header className="border-b border-gray-800 px-6 py-4">
+      <header className="border-b border-gray-800 px-4 sm:px-6 py-3 sm:py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <span className="font-bold text-lg text-blue-400">CoinHQ</span>
           <div className="flex items-center gap-3">
@@ -87,11 +87,11 @@ export default async function SharePage({
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-3xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
         {/* Total */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6 text-center">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Portfolio Value</p>
-          <p className="text-4xl font-bold">
+          <p className="text-3xl sm:text-4xl font-bold tabular-nums">
             {data.total_usd != null ? fmt(data.total_usd) : "—"}
           </p>
           {!data.show_total_value && (

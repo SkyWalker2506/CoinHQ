@@ -24,7 +24,7 @@ export default function DelegateTradePanel({
   spentTodayUsd,
 }: Props) {
   return (
-    <div className="bg-gray-900 border border-amber-500/30 rounded-2xl p-6 mb-6">
+    <div className="bg-gray-900 border border-amber-500/30 rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6">
       <div className="flex items-center gap-2 mb-1">
         <h2 className="font-semibold text-white">Trade on this portfolio</h2>
         <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">

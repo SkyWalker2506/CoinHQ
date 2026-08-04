@@ -148,13 +148,25 @@ export default function SharedHoldings({
     }
   }
 
-  function SortHeader({ label, sortKey: key, align = "right" }: { label: string; sortKey: SortKey; align?: "left" | "right" }) {
+  function SortHeader({
+    label,
+    sortKey: key,
+    align = "right",
+    narrowHidden = false,
+  }: {
+    label: string;
+    sortKey: SortKey;
+    align?: "left" | "right";
+    narrowHidden?: boolean;
+  }) {
     const active = sortKey === key;
     return (
       <th
         scope="col"
         aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
-        className={`px-5 py-2 font-medium ${align === "left" ? "text-left" : "text-right"}`}
+        className={`px-4 sm:px-5 py-2 font-medium ${align === "left" ? "text-left" : "text-right"} ${
+          narrowHidden ? "hidden sm:table-cell" : ""
+        }`}
       >
         <button
           type="button"
@@ -170,6 +182,16 @@ export default function SharedHoldings({
       </th>
     );
   }
+
+  // Columns folded away on a phone lose their header button, so the sort keys
+  // they carry are offered here instead. Kept out of the accessibility tree on
+  // wide screens so the headers stay the single set of sort controls.
+  const sortOptions: { key: SortKey; label: string }[] = [
+    { key: "asset", label: "Name" },
+    ...(showCoinAmounts ? [{ key: "amount" as SortKey, label: "Amount" }] : []),
+    ...(showTotalValue ? [{ key: "value" as SortKey, label: "Value" }] : []),
+    ...(showAllocationPct ? [{ key: "allocation" as SortKey, label: "Allocation" }] : []),
+  ];
 
   return (
     <section>
@@ -218,9 +240,39 @@ export default function SharedHoldings({
         )}
       </div>
 
-      <p className="text-xs text-gray-600 mb-3">
-        {shownRows === totalRows ? `${totalRows} assets` : `${shownRows} of ${totalRows} assets`}
-      </p>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <p className="text-xs text-gray-600">
+          {shownRows === totalRows ? `${totalRows} assets` : `${shownRows} of ${totalRows} assets`}
+        </p>
+
+        {sortOptions.length > 1 && (
+          <div className="sm:hidden flex items-center gap-1" aria-hidden={false}>
+            <label htmlFor="sort-by" className="sr-only">
+              Sort by
+            </label>
+            <select
+              id="sort-by"
+              value={sortKey}
+              onChange={(e) => toggleSort(e.target.value as SortKey)}
+              className="bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500"
+            >
+              {sortOptions.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
+              aria-label={sortDir === "asc" ? "Sort descending" : "Sort ascending"}
+              className="px-2 py-1.5 rounded-lg border border-gray-800 bg-gray-950 text-xs text-gray-300"
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="space-y-4">
         {groups.map((group, gi) => (
@@ -235,58 +287,80 @@ export default function SharedHoldings({
             )}
 
             {group.rows.length === 0 ? (
-              <p className="text-sm text-gray-600 px-5 py-4">
+              <p className="text-xs sm:text-sm text-gray-600 px-4 sm:px-5 py-4">
                 {search ? `No assets matching “${search}”` : "No assets"}
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs border-b border-gray-800">
-                      <SortHeader label="Asset" sortKey="asset" align="left" />
-                      {showCoinAmounts && <SortHeader label="Amount" sortKey="amount" />}
-                      {showTotalValue && <SortHeader label="Value" sortKey="value" />}
-                      {showAllocationPct && <SortHeader label="Allocation" sortKey="allocation" />}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.rows.map((row) => {
-                      const unpriced = showTotalValue && isUnpriced(row);
-                      return (
-                        <tr
-                          key={row.asset}
-                          className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30"
-                        >
-                          <td className="px-5 py-3 font-medium text-white">
-                            <span className="flex items-center gap-1.5 flex-wrap">
-                              {row.asset}
-                              {unpriced && (
-                                <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded-sm font-normal">
-                                  no price
-                                </span>
-                              )}
-                              {effectiveGrouping === "combined" && row.venues.length > 1 && (
-                                <span className="text-[10px] text-gray-500 font-normal">
-                                  {row.venues.length} exchanges
-                                </span>
-                              )}
-                            </span>
-                          </td>
+              <table className="w-full text-xs sm:text-sm">
+                <thead>
+                  {/* Amount and Allocation collapse into the two remaining cells
+                      on a phone rather than pushing the table off-screen. */}
+                  <tr className="text-[11px] sm:text-xs border-b border-gray-800">
+                    <SortHeader label="Asset" sortKey="asset" align="left" />
+                    {showCoinAmounts && <SortHeader label="Amount" sortKey="amount" narrowHidden />}
+                    {showTotalValue && <SortHeader label="Value" sortKey="value" />}
+                    {showAllocationPct && <SortHeader label="Allocation" sortKey="allocation" narrowHidden={showTotalValue} />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map((row) => {
+                    const unpriced = showTotalValue && isUnpriced(row);
+                    return (
+                      <tr
+                        key={row.asset}
+                        className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30"
+                      >
+                        <td className="px-4 sm:px-5 py-2.5 sm:py-3 font-medium text-white">
+                          <span className="flex items-center gap-1.5 flex-wrap">
+                            {/* The badges and the folded amount share this cell,
+                                so the symbol is tagged for tests to address. */}
+                            <span data-testid="asset-symbol">{row.asset}</span>
+                            {unpriced && (
+                              <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded-sm font-normal">
+                                no price
+                              </span>
+                            )}
+                            {effectiveGrouping === "combined" && row.venues.length > 1 && (
+                              <span className="text-[10px] text-gray-500 font-normal">
+                                {row.venues.length} exchanges
+                              </span>
+                            )}
+                          </span>
                           {showCoinAmounts && (
-                            <td className="px-5 py-3 text-right text-gray-300">{fmtAmount(row.amount)}</td>
+                            <span className="sm:hidden block text-[11px] text-gray-500 tabular-nums">
+                              {fmtAmount(row.amount)}
+                            </span>
                           )}
-                          {showTotalValue && (
-                            <td className="px-5 py-3 text-right text-gray-300">{fmtUsd(row.usd_value)}</td>
-                          )}
-                          {showAllocationPct && (
-                            <td className="px-5 py-3 text-right text-gray-400">{fmtPct(row.allocation_pct)}</td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        </td>
+                        {showCoinAmounts && (
+                          <td className="hidden sm:table-cell px-5 py-3 text-right text-gray-300 tabular-nums">
+                            {fmtAmount(row.amount)}
+                          </td>
+                        )}
+                        {showTotalValue && (
+                          <td className="px-4 sm:px-5 py-2.5 sm:py-3 text-right text-gray-300 tabular-nums">
+                            {fmtUsd(row.usd_value)}
+                            {showAllocationPct && (
+                              <span className="sm:hidden block text-[11px] text-gray-500">
+                                {fmtPct(row.allocation_pct)}
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        {showAllocationPct && (
+                          <td
+                            className={`px-4 sm:px-5 py-2.5 sm:py-3 text-right text-gray-400 tabular-nums ${
+                              showTotalValue ? "hidden sm:table-cell" : ""
+                            }`}
+                          >
+                            {fmtPct(row.allocation_pct)}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         ))}

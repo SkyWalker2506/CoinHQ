@@ -110,7 +110,7 @@ const jwt = SEED.users.demo.jwt;
   await page.screenshot({ path: `${SHOTS}/05-share-trade.png`, fullPage: true });
 
   // Valid delegate order via UI: buy 50 USD ETH
-  await page.getByLabel('Asset').fill('ETH');
+  await page.getByRole('textbox', { name: 'Asset' }).fill('ETH');
   await page.getByLabel('USD amount').fill('50');
   await page.getByRole('button', { name: /Place buy order/i }).click();
   await page.waitForTimeout(2500);
@@ -119,7 +119,7 @@ const jwt = SEED.users.demo.jwt;
   await page.screenshot({ path: `${SHOTS}/06-delegate-trade-ok.png`, fullPage: true });
 
   // Over-limit order: 600 USD > 500 per-order cap → visible error
-  await page.getByLabel('Asset').fill('BTC');
+  await page.getByRole('textbox', { name: 'Asset' }).fill('BTC');
   await page.getByLabel('USD amount').fill('600');
   await page.getByRole('button', { name: /Place buy order/i }).click();
   await page.waitForTimeout(2500);
@@ -160,11 +160,34 @@ const jwt = SEED.users.demo.jwt;
   await page.context().close();
 }
 
+// ── 6b. Share sayfasi telefon genisliklerinde tasmamali ───────────────────────
+// Kart overflow'u kirptigi icin sayfa genisligi tek basina yeterli degil:
+// tablo kendi kutusuna karsi da olculur.
+for (const [id, name, width] of [['UI-22', 'iphone-se', 375], ['UI-23', 'pixel', 412], ['UI-24', 'tablet', 768]]) {
+  const ctx = await browser.newContext({
+    viewport: { width, height: 900 }, isMobile: width < 768, hasTouch: width < 768,
+  });
+  const page = await ctx.newPage();
+  await page.goto(`${FRONTEND}/share/${SEED.share_tokens.open_trade}`, { waitUntil: 'networkidle' });
+  const overflow = await page.evaluate(() => {
+    const doc = document.documentElement;
+    const table = [...document.querySelectorAll('table')]
+      .map(t => t.scrollWidth - t.parentElement.clientWidth)
+      .reduce((a, b) => Math.max(a, b), 0);
+    return { page: doc.scrollWidth - doc.clientWidth, table };
+  });
+  check(id, `share: ${name} (${width}px) yatay tasma yok`,
+    overflow.page <= 0 && overflow.table <= 0,
+    `page=${overflow.page} table=${overflow.table}`);
+  await page.screenshot({ path: `${SHOTS}/09-share-${name}.png`, fullPage: true });
+  await ctx.close();
+}
+
 // ── 7. Pricing page ───────────────────────────────────────────────────────────
 {
   const page = await newPage();
   await page.goto(`${FRONTEND}/pricing`, { waitUntil: 'networkidle' });
-  check('UI-22', 'pricing: planlar + waitlist formu',
+  check('UI-25', 'pricing: planlar + waitlist formu',
     /Cloud Premium/.test(await page.textContent('body')));
   await page.screenshot({ path: `${SHOTS}/10-pricing.png`, fullPage: true });
   await page.context().close();

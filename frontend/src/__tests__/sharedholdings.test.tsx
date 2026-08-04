@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SharedExchange } from "@/lib/types";
 
@@ -39,13 +39,10 @@ function renderHoldings(props: Partial<React.ComponentProps<typeof SharedHolding
   );
 }
 
-/** Asset symbols in render order, ignoring header rows and in-cell badge text. */
+/** Asset symbols in render order. The cell also carries badges and, on narrow
+ *  screens, the folded amount, so the symbol itself is addressed directly. */
 function assetOrder(): string[] {
-  return screen
-    .getAllByRole("row")
-    .map((row) => within(row).queryAllByRole("cell")[0])
-    .filter((cell): cell is HTMLElement => cell != null)
-    .map((cell) => (cell.textContent ?? "").replace(/no price|\d+ exchanges/g, "").trim());
+  return screen.getAllByTestId("asset-symbol").map((el) => el.textContent ?? "");
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
