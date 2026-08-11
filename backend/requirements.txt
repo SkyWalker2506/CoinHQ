@@ -244,7 +244,7 @@ sqlalchemy==2.0.30
     #   coinhq-backend
 starlette==1.2.1
     # via fastapi
-structlog==25.5.0
+structlog==26.1.0
     # via coinhq-backend
 twine==6.2.0
     # via python-okx
