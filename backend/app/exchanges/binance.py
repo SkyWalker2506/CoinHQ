@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import time
@@ -13,11 +14,16 @@ from app.schemas.portfolio import Balance
 BINANCE_BASE = "https://api.binance.com"
 
 # Trade history is per symbol, so every held asset costs one call per quote it
-# might have been bought with. /api/v3/myTrades weighs 20 of the 6000/min IP
-# budget; the cap keeps a dusty account from burning a third of it.
+# might have been bought with. Only symbols Binance actually lists are asked
+# for: guessing all three quotes per coin spent most of a 40-call budget on
+# markets that do not exist, which left 39 of 53 real holdings with no
+# history at all. /api/v3/myTrades weighs 20 of the 6000/min IP budget, so
+# 150 calls is half a minute's allowance, spent at most once per 15-minute
+# cost-basis cache window.
 _FILL_QUOTES = ("USDT", "USDC", "FDUSD")
 _FILL_PAGE_LIMIT = 1000
-_FILL_MAX_CALLS = 40
+_FILL_MAX_CALLS = 150
+_FILL_CONCURRENCY = 8
 
 
 class BinanceAdapter(ExchangeAdapter):
@@ -95,36 +101,60 @@ class BinanceAdapter(ExchangeAdapter):
                 )
         return balances
 
-    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
-        """GET /api/v3/myTrades per <ASSET><QUOTE> symbol, paged forward by fromId.
+    async def _listed_symbols(self, client: httpx.AsyncClient) -> set[str] | None:
+        """Every symbol Binance currently lists (public ticker, weight 4), or
+        None if that could not be fetched — callers then guess every quote."""
+        try:
+            resp = await client.get(f"{BINANCE_BASE}/api/v3/ticker/price", timeout=15)
+            resp.raise_for_status()
+            return {t["symbol"] for t in resp.json() if isinstance(t, dict) and "symbol" in t}
+        except Exception as exc:  # noqa: BLE001 — degrade to guessing, never raise
+            logger.warning("exchange_symbol_list_failed", exchange="binance", error=str(exc))
+            return None
 
-        A symbol that does not exist answers 400 (-1121 "Invalid symbol") and
-        is skipped; the asset simply was never traded against that quote.
-        Trades are walked from id 0 upward so old history comes first — the
-        default (no fromId) would return only the most recent page.
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        """GET /api/v3/myTrades per listed <ASSET><QUOTE> symbol, paged forward by fromId.
+
+        Symbols are checked against Binance's own listing first so the call
+        budget is spent on markets that exist. A symbol that still answers 400
+        (-1121 "Invalid symbol") is skipped. Trades are walked from id 0
+        upward so old history comes first — the default (no fromId) would
+        return only the most recent page. `assets` arrive most valuable first,
+        and symbols claim their first call in that order, so if the budget
+        runs out it is the dust that goes without history.
         """
-        fills: list[Fill] = []
-        calls = 0
         try:
             async with self._client() as client:
-                for asset in assets:
-                    base = asset.upper()
-                    for quote in _FILL_QUOTES:
-                        if base == quote:
-                            continue
-                        symbol = f"{base}{quote}"
-                        from_id = 0
-                        while True:
-                            if calls >= _FILL_MAX_CALLS:
+                listed = await self._listed_symbols(client)
+                symbols = [
+                    (base, quote)
+                    for base in (a.upper() for a in assets)
+                    for quote in _FILL_QUOTES
+                    if base != quote and (listed is None or f"{base}{quote}" in listed)
+                ]
+                budget = {"left": _FILL_MAX_CALLS, "warned": False}
+                gate = asyncio.Semaphore(_FILL_CONCURRENCY)
+
+                async def walk(base: str, quote: str) -> list[Fill]:
+                    out: list[Fill] = []
+                    from_id = 0
+                    while True:
+                        if budget["left"] <= 0:
+                            if not budget["warned"]:
+                                budget["warned"] = True
                                 logger.warning(
                                     "exchange_fills_call_budget_exhausted",
                                     exchange="binance",
-                                    calls=calls,
+                                    calls=_FILL_MAX_CALLS,
                                 )
-                                return fills
-                            calls += 1
+                            return out
+                        budget["left"] -= 1
+                        async with gate:
+                            # Signed inside the slot: Binance rejects a
+                            # timestamp older than its 5s recvWindow, and a
+                            # queued call can wait that long for a slot.
                             params = self._sign({
-                                "symbol": symbol,
+                                "symbol": f"{base}{quote}",
                                 "fromId": from_id,
                                 "limit": _FILL_PAGE_LIMIT,
                                 "timestamp": int(time.time() * 1000),
@@ -134,26 +164,28 @@ class BinanceAdapter(ExchangeAdapter):
                                 params=params,
                                 headers=self._headers(),
                             )
-                            if resp.status_code == 400:
-                                break  # no such market for this base/quote
-                            resp.raise_for_status()
-                            rows = resp.json()
-                            if not isinstance(rows, list):
-                                break
-                            for row in rows:
-                                fill = self._parse_fill(row, base, quote)
-                                if fill is not None:
-                                    fills.append(fill)
-                            if len(rows) < _FILL_PAGE_LIMIT:
-                                break
-                            try:
-                                from_id = int(rows[-1]["id"]) + 1
-                            except (KeyError, TypeError, ValueError):
-                                break
+                        if resp.status_code == 400:
+                            return out  # no such market for this base/quote
+                        resp.raise_for_status()
+                        rows = resp.json()
+                        if not isinstance(rows, list):
+                            return out
+                        for row in rows:
+                            fill = self._parse_fill(row, base, quote)
+                            if fill is not None:
+                                out.append(fill)
+                        if len(rows) < _FILL_PAGE_LIMIT:
+                            return out
+                        try:
+                            from_id = int(rows[-1]["id"]) + 1
+                        except (KeyError, TypeError, ValueError):
+                            return out
+
+                per_symbol = await asyncio.gather(*(walk(b, q) for b, q in symbols))
         except Exception as exc:  # noqa: BLE001 — best-effort, never raise
             logger.warning("exchange_fills_fetch_failed", exchange="binance", error=str(exc))
             return None
-        return fills
+        return [fill for batch in per_symbol for fill in batch]
 
     @staticmethod
     def _parse_fill(row: dict, base: str, quote: str) -> Fill | None:

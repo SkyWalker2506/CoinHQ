@@ -93,52 +93,82 @@ def _binance_trade(tid, qty, quote_qty, buyer=True, fee="0", fee_asset="BNB", ts
     }
 
 
-async def test_binance_fills_skip_missing_symbols_and_parse():
+def _binance(listed, trades):
+    """Fake Binance: `listed` symbols on the public ticker, `trades(q)` for myTrades."""
     def handler(url, kwargs):
-        q = _query(url, kwargs)
+        if url.endswith("/api/v3/ticker/price"):
+            if listed is None:
+                return _resp({"msg": "boom"}, status=500)
+            return _resp([{"symbol": s, "price": "1"} for s in listed])
+        return trades(_query(url, kwargs))
+    return _client(handler)
+
+
+def _trade_calls(client) -> list[dict]:
+    return [_query(u, k) for u, k in client.calls if u.endswith("/api/v3/myTrades")]
+
+
+async def test_binance_fills_only_ask_for_listed_symbols_and_parse():
+    def trades(q):
         assert "signature" in q and "timestamp" in q
         if q["symbol"] == "UNIUSDT":
             return _resp([
                 _binance_trade(1, 10, 50, fee="0.01", fee_asset="UNI"),
                 _binance_trade(2, 4, 24, buyer=False, fee="0.02", fee_asset="USDT"),
             ])
-        return _resp({"code": -1121, "msg": "Invalid symbol."}, status=400)
+        return _resp([])
 
-    client = _client(handler)
-    adapter = BinanceAdapter("key", "secret", http_client=client)
-    fills = await adapter.get_fills(["UNI"])
+    client = _binance({"UNIUSDT", "UNIUSDC", "BTCUSDT"}, trades)
+    fills = await BinanceAdapter("key", "secret", http_client=client).get_fills(["UNI"])
 
     assert fills is not None and len(fills) == 2
-    buy, sell = fills
+    buy, sell = sorted(fills, key=lambda f: f.side)
     assert buy == Fill("UNI", "buy", 10.0, "USDT", 50.0, "UNI", 0.01, 1_700_000_000_000)
     assert sell.side == "sell" and sell.fee_asset == "USDT" and sell.fee_qty == 0.02
-    # One call per quote (USDT, USDC, FDUSD); the two invalid symbols were skipped.
-    symbols = [_query(u, k)["symbol"] for u, k in client.calls]
-    assert symbols == ["UNIUSDT", "UNIUSDC", "UNIFDUSD"]
+    # UNIFDUSD is not listed, so no call is spent on it.
+    assert sorted(q["symbol"] for q in _trade_calls(client)) == ["UNIUSDC", "UNIUSDT"]
+
+
+async def test_binance_fills_guess_every_quote_when_listing_unavailable():
+    def trades(q):
+        if q["symbol"] == "UNIUSDT":
+            return _resp([_binance_trade(1, 10, 50)])
+        return _resp({"code": -1121, "msg": "Invalid symbol."}, status=400)
+
+    client = _binance(None, trades)
+    fills = await BinanceAdapter("k", "s", http_client=client).get_fills(["UNI"])
+    assert fills is not None and len(fills) == 1
+    assert sorted(q["symbol"] for q in _trade_calls(client)) == ["UNIFDUSD", "UNIUSDC", "UNIUSDT"]
 
 
 async def test_binance_fills_page_forward_by_from_id():
     pages = {0: [_binance_trade(i, 1, 5) for i in range(1000)], 1000: [_binance_trade(1000, 1, 5)]}
-
-    def handler(url, kwargs):
-        q = _query(url, kwargs)
-        if q["symbol"] != "UNIUSDT":
-            return _resp({}, status=400)
-        return _resp(pages[int(q["fromId"])])
-
-    client = _client(handler)
+    client = _binance({"UNIUSDT"}, lambda q: _resp(pages[int(q["fromId"])]))
     fills = await BinanceAdapter("k", "s", http_client=client).get_fills(["UNI"])
     assert len(fills) == 1001
-    from_ids = [_query(u, k)["fromId"] for u, k in client.calls if _query(u, k)["symbol"] == "UNIUSDT"]
-    assert from_ids == ["0", "1000"]
+    assert [q["fromId"] for q in _trade_calls(client)] == ["0", "1000"]
 
 
-async def test_binance_fills_respect_call_budget():
-    client = _client(lambda url, kwargs: _resp([_binance_trade(1, 1, 5)]))
-    assets = [f"A{i}" for i in range(30)]  # 90 symbol combos > budget
+async def test_binance_fills_cover_a_real_sized_account():
+    """53 holdings with one listed USDT market each — the account that came
+    back with history for only 14 coins when every quote was guessed."""
+    assets = [f"C{i}" for i in range(53)]
+    client = _binance({f"{a}USDT" for a in assets},
+                      lambda q: _resp([_binance_trade(1, 1, 5)]))
+    fills = await BinanceAdapter("k", "s", http_client=client).get_fills(assets)
+    assert {f.asset for f in fills} == set(assets)
+    assert len(_trade_calls(client)) == 53
+
+
+async def test_binance_fills_respect_call_budget_most_valuable_first():
+    assets = [f"A{i}" for i in range(200)]  # 200 listed symbols > 150-call budget
+    client = _binance({f"{a}USDT" for a in assets},
+                      lambda q: _resp([_binance_trade(1, 1, 5)]))
     fills = await BinanceAdapter("k", "s", http_client=client).get_fills(assets)
     assert fills is not None
-    assert len(client.calls) == 40
+    assert len(_trade_calls(client)) == 150
+    # Assets arrive most valuable first; the ones left out are the tail.
+    assert {f.asset for f in fills} == set(assets[:150])
 
 
 async def test_binance_fills_return_none_on_failure():
