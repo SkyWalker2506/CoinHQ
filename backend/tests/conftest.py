@@ -14,11 +14,14 @@ def _clear_price_memo():
     deployment), but it is module-global, so without this one test's symbol
     map would silently satisfy the next test's lookup.
     """
+    from app.services.cost_basis_service import _MEMO as _COST_MEMO
     from app.services.price_service import _MEMO
 
     _MEMO.clear()
+    _COST_MEMO.clear()
     yield
     _MEMO.clear()
+    _COST_MEMO.clear()
 
 
 @pytest.fixture

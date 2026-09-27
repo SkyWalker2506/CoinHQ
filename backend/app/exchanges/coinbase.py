@@ -4,14 +4,20 @@ import json
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import httpx
 
 from app.core.logging import logger
-from app.exchanges.base import ExchangeAdapter
+from app.exchanges.base import ExchangeAdapter, Fill
 from app.schemas.portfolio import Balance
 
 COINBASE_BASE = "https://api.coinbase.com"
+
+# /api/v3/brokerage/orders/historical/fills is cursor-paged; the whole
+# account's fills come back in one series and are filtered locally.
+_FILL_PAGE_LIMIT = 100
+_FILL_MAX_PAGES = 10
 
 
 class CoinbaseAdapter(ExchangeAdapter):
@@ -100,6 +106,73 @@ class CoinbaseAdapter(ExchangeAdapter):
                     )
                 )
         return balances
+
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        """GET /api/v3/brokerage/orders/historical/fills, cursor-paged.
+
+        The legacy HMAC signature (the scheme this adapter already uses)
+        covers the request path without its query string. `size_in_quote`
+        says whether `size` is a quote amount; `commission` is always quote.
+        """
+        wanted = {a.upper() for a in assets}
+        if not wanted:
+            return []
+        fills: list[Fill] = []
+        cursor = ""
+        try:
+            async with self._client() as client:
+                for _ in range(_FILL_MAX_PAGES):
+                    path = "/api/v3/brokerage/orders/historical/fills"
+                    params: dict[str, str] = {"limit": str(_FILL_PAGE_LIMIT)}
+                    if cursor:
+                        params["cursor"] = cursor
+                    timestamp = str(int(time.time()))
+                    resp = await client.get(
+                        f"{COINBASE_BASE}{path}",
+                        params=params,
+                        headers=self._headers(timestamp, self._sign(timestamp, "GET", path)),
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    rows = data.get("fills") or []
+                    for row in rows:
+                        fill = self._parse_fill(row)
+                        if fill is not None and fill.asset in wanted:
+                            fills.append(fill)
+                    cursor = str(data.get("cursor") or "")
+                    if not cursor or not rows:
+                        break
+        except Exception as exc:  # noqa: BLE001 — best-effort, never raise
+            logger.warning("exchange_fills_fetch_failed", exchange="coinbase", error=str(exc))
+            return None
+        return fills
+
+    @staticmethod
+    def _parse_fill(row: dict) -> Fill | None:
+        try:
+            base, quote = str(row["product_id"]).split("-", 1)
+            price = float(row["price"])
+            size = float(row["size"])
+            if row.get("size_in_quote"):
+                quote_qty = size
+                qty = size / price if price > 0 else 0.0
+            else:
+                qty = size
+                quote_qty = size * price
+            trade_time = str(row["trade_time"]).replace("Z", "+00:00")
+            ts_ms = int(datetime.fromisoformat(trade_time).timestamp() * 1000)
+            return Fill(
+                asset=base.upper(),
+                side=str(row["side"]).lower(),
+                qty=qty,
+                quote_asset=quote.upper(),
+                quote_qty=quote_qty,
+                fee_asset=quote.upper(),
+                fee_qty=max(float(row.get("commission") or 0.0), 0.0),
+                ts_ms=ts_ms,
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
 
     async def validate_key(self) -> bool:
         """Validate key — Coinbase Advanced Trade read-only (view) keys are accepted."""

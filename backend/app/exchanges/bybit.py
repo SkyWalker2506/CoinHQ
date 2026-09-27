@@ -7,10 +7,18 @@ from contextlib import asynccontextmanager
 import httpx
 
 from app.core.logging import logger
-from app.exchanges.base import ExchangeAdapter
+from app.exchanges.base import ExchangeAdapter, Fill
 from app.schemas.portfolio import Balance
 
 BYBIT_BASE = "https://api.bybit.com"
+
+# /v5/execution/list: endTime - startTime <= 7 days, cursor-paged, 100/page,
+# data available for up to 2 years. History is walked back one week at a time.
+_FILL_WINDOW_MS = 7 * 24 * 3600 * 1000
+_FILL_MAX_WINDOWS = 26  # ~6 months
+_FILL_PAGE_LIMIT = 100
+_FILL_MAX_CALLS = 40
+_FILL_QUOTES = ("USDT", "USDC", "USDE", "EUR", "BTC", "ETH", "DAI")
 
 
 class BybitAdapter(ExchangeAdapter):
@@ -97,6 +105,101 @@ class BybitAdapter(ExchangeAdapter):
                         )
                     )
         return balances
+
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        """GET /v5/execution/list?category=spot in 7-day windows walking back.
+
+        The signature covers the query string exactly as sent, so it is built
+        by hand and appended to the URL. Spot symbols carry no separator
+        (UNIUSDT), so the quote is recovered from a known-quote suffix list.
+        """
+        wanted = {a.upper() for a in assets}
+        if not wanted:
+            return []
+        fills: list[Fill] = []
+        calls = 0
+        now_ms = int(time.time() * 1000)
+        try:
+            async with self._client() as client:
+                for i in range(_FILL_MAX_WINDOWS):
+                    end = now_ms - i * _FILL_WINDOW_MS
+                    start = end - _FILL_WINDOW_MS
+                    cursor = ""
+                    while True:
+                        if calls >= _FILL_MAX_CALLS:
+                            logger.warning(
+                                "exchange_fills_call_budget_exhausted",
+                                exchange="bybit",
+                                calls=calls,
+                            )
+                            return fills
+                        calls += 1
+                        params = {
+                            "category": "spot",
+                            "startTime": str(start),
+                            "endTime": str(end),
+                            "limit": str(_FILL_PAGE_LIMIT),
+                        }
+                        if cursor:
+                            params["cursor"] = cursor
+                        query = "&".join(f"{k}={v}" for k, v in params.items())
+                        timestamp = str(int(time.time() * 1000))
+                        resp = await client.get(
+                            f"{BYBIT_BASE}/v5/execution/list?{query}",
+                            headers=self._headers(timestamp, self._sign(timestamp, query)),
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                        if data.get("retCode") not in (0, None):
+                            raise ValueError(f"Bybit error code {data.get('retCode')}")
+                        result = data.get("result") or {}
+                        rows = result.get("list") or []
+                        for row in rows:
+                            fill = self._parse_fill(row)
+                            if fill is not None and fill.asset in wanted:
+                                fills.append(fill)
+                        cursor = str(result.get("nextPageCursor") or "")
+                        if not cursor or len(rows) < _FILL_PAGE_LIMIT:
+                            break
+        except Exception as exc:  # noqa: BLE001 — best-effort, never raise
+            logger.warning("exchange_fills_fetch_failed", exchange="bybit", error=str(exc))
+            return None
+        return fills
+
+    @staticmethod
+    def _split_symbol(symbol: str) -> tuple[str, str] | None:
+        for quote in _FILL_QUOTES:
+            if symbol.endswith(quote) and len(symbol) > len(quote):
+                return symbol[: -len(quote)], quote
+        return None
+
+    @classmethod
+    def _parse_fill(cls, row: dict) -> Fill | None:
+        try:
+            parts = cls._split_symbol(str(row["symbol"]).upper())
+            if parts is None:
+                return None
+            base, quote = parts
+            side = str(row["side"]).lower()
+            qty = float(row["execQty"])
+            price = float(row["execPrice"])
+            quote_qty = float(row.get("execValue") or qty * price)
+            fee_asset = str(row.get("feeCurrency") or "").upper()
+            if not fee_asset:
+                # Classic spot: buys are charged in the base coin, sells in quote.
+                fee_asset = base if side == "buy" else quote
+            return Fill(
+                asset=base,
+                side=side,
+                qty=qty,
+                quote_asset=quote,
+                quote_qty=quote_qty,
+                fee_asset=fee_asset,
+                fee_qty=max(float(row.get("execFee") or 0.0), 0.0),
+                ts_ms=int(row["execTime"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
 
     async def validate_key(self) -> bool:
         timestamp = str(int(time.time() * 1000))

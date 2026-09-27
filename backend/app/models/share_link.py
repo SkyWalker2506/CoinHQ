@@ -19,6 +19,11 @@ class ShareLink(Base):
     show_coin_amounts: Mapped[bool] = mapped_column(Boolean, default=False)
     show_exchange_names: Mapped[bool] = mapped_column(Boolean, default=False)
     show_allocation_pct: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Average buy price comes from the exchange's trade history — a separate,
+    # slower fetch — so it is only computed for links that opt in.
+    show_avg_buy_price: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
 
     # Timezone-aware: the app writes datetime.now(UTC); a naive column makes
     # asyncpg reject those tz-aware values on Postgres.

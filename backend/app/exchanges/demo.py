@@ -16,7 +16,7 @@ response, sizing executedQty from the supplied price (or canned demo prices).
 
 import uuid
 
-from app.exchanges.base import ExchangeAdapter
+from app.exchanges.base import ExchangeAdapter, Fill
 from app.schemas.portfolio import Balance
 
 # Deterministic demo prices. Used both to size simulated fills and (in DEMO_MODE)
@@ -46,6 +46,32 @@ _PRESET_ALT = [
     ("USDT", 250.00, 0.0000),
 ]
 
+# Deterministic trade history behind the presets (asset, side, qty, quote,
+# quote_qty, fee_asset, fee_qty, ts_ms). Chosen so every coverage state shows
+# up in a demo: BTC/ETH/SOL are fully explained (0.43 / 3.25 / 30 held),
+# ADA was bought against BTC (non-stable quote → partial), DOGE has a sell.
+_DEMO_FILLS: dict[str, list[tuple]] = {
+    "BTC": [
+        ("BTC", "buy", 0.25, "USDT", 10_500.0, "BTC", 0.00025, 1_700_000_000_000),
+        ("BTC", "buy", 0.20, "USDT", 11_600.0, "USDT", 11.6, 1_705_000_000_000),
+        ("BTC", "sell", 0.02, "USDT", 1_300.0, "USDT", 1.3, 1_710_000_000_000),
+    ],
+    "ETH": [
+        ("ETH", "buy", 2.0, "USDC", 4_400.0, "USDC", 4.4, 1_700_500_000_000),
+        ("ETH", "buy", 1.25, "USDT", 3_500.0, "USDT", 3.5, 1_706_000_000_000),
+    ],
+    "SOL": [
+        ("SOL", "buy", 30.0, "USDT", 2_700.0, "USDT", 2.7, 1_702_000_000_000),
+    ],
+    "ADA": [
+        ("ADA", "buy", 800.0, "BTC", 0.006, "BTC", 0.000006, 1_703_000_000_000),
+    ],
+    "DOGE": [
+        ("DOGE", "buy", 6_000.0, "USDT", 480.0, "USDT", 0.48, 1_704_000_000_000),
+        ("DOGE", "sell", 1_000.0, "USDT", 110.0, "USDT", 0.11, 1_708_000_000_000),
+    ],
+}
+
 
 class DemoAdapter(ExchangeAdapter):
     """Paper exchange: deterministic balances, always-valid keys, simulated fills."""
@@ -62,6 +88,15 @@ class DemoAdapter(ExchangeAdapter):
         return [
             Balance(asset=asset, free=free, locked=locked, total=free + locked)
             for asset, free, locked in self._preset()
+        ]
+
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        held = {asset for asset, _, _ in self._preset()}
+        wanted = {a.upper() for a in assets} & held
+        return [
+            Fill(*row)
+            for asset in sorted(wanted)
+            for row in _DEMO_FILLS.get(asset, [])
         ]
 
     async def validate_key(self) -> bool:

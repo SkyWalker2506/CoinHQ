@@ -11,7 +11,9 @@ from app.core.security import get_current_user
 from app.models.exchange_key import ExchangeKey
 from app.models.profile import Profile
 from app.models.user import User
+from app.schemas.cost_basis import CostBasisResponse
 from app.schemas.portfolio import AggregatePortfolioResponse, PortfolioResponse
+from app.services.cost_basis_service import get_cost_basis
 from app.services.portfolio_service import get_aggregate_portfolio, get_portfolio
 
 limiter = Limiter(key_func=get_remote_address)
@@ -44,6 +46,35 @@ async def portfolio_for_profile(
         redis=request.app.state.redis,
         http_client=request.app.state.http_client,
         db=db,
+    )
+
+
+@router.get("/profile/{profile_id}/cost-basis", response_model=CostBasisResponse)
+@limiter.limit(settings.RATE_LIMIT_PORTFOLIO)
+async def cost_basis_for_profile(
+    request: Request,
+    profile_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Average buy price per held coin, from each exchange's own trade history."""
+    profile = await db.get(Profile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if profile.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    result = await db.execute(
+        select(ExchangeKey).where(ExchangeKey.profile_id == profile_id)
+    )
+    keys = result.scalars().all()
+
+    return await get_cost_basis(
+        profile.id,
+        profile.name,
+        keys,
+        redis=request.app.state.redis,
+        http_client=request.app.state.http_client,
     )
 
 

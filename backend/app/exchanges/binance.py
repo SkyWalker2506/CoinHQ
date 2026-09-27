@@ -7,10 +7,17 @@ from urllib.parse import urlencode
 import httpx
 
 from app.core.logging import logger
-from app.exchanges.base import ExchangeAdapter
+from app.exchanges.base import ExchangeAdapter, Fill
 from app.schemas.portfolio import Balance
 
 BINANCE_BASE = "https://api.binance.com"
+
+# Trade history is per symbol, so every held asset costs one call per quote it
+# might have been bought with. /api/v3/myTrades weighs 20 of the 6000/min IP
+# budget; the cap keeps a dusty account from burning a third of it.
+_FILL_QUOTES = ("USDT", "USDC", "FDUSD")
+_FILL_PAGE_LIMIT = 1000
+_FILL_MAX_CALLS = 40
 
 
 class BinanceAdapter(ExchangeAdapter):
@@ -87,6 +94,82 @@ class BinanceAdapter(ExchangeAdapter):
                     )
                 )
         return balances
+
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        """GET /api/v3/myTrades per <ASSET><QUOTE> symbol, paged forward by fromId.
+
+        A symbol that does not exist answers 400 (-1121 "Invalid symbol") and
+        is skipped; the asset simply was never traded against that quote.
+        Trades are walked from id 0 upward so old history comes first — the
+        default (no fromId) would return only the most recent page.
+        """
+        fills: list[Fill] = []
+        calls = 0
+        try:
+            async with self._client() as client:
+                for asset in assets:
+                    base = asset.upper()
+                    for quote in _FILL_QUOTES:
+                        if base == quote:
+                            continue
+                        symbol = f"{base}{quote}"
+                        from_id = 0
+                        while True:
+                            if calls >= _FILL_MAX_CALLS:
+                                logger.warning(
+                                    "exchange_fills_call_budget_exhausted",
+                                    exchange="binance",
+                                    calls=calls,
+                                )
+                                return fills
+                            calls += 1
+                            params = self._sign({
+                                "symbol": symbol,
+                                "fromId": from_id,
+                                "limit": _FILL_PAGE_LIMIT,
+                                "timestamp": int(time.time() * 1000),
+                            })
+                            resp = await client.get(
+                                f"{BINANCE_BASE}/api/v3/myTrades",
+                                params=params,
+                                headers=self._headers(),
+                            )
+                            if resp.status_code == 400:
+                                break  # no such market for this base/quote
+                            resp.raise_for_status()
+                            rows = resp.json()
+                            if not isinstance(rows, list):
+                                break
+                            for row in rows:
+                                fill = self._parse_fill(row, base, quote)
+                                if fill is not None:
+                                    fills.append(fill)
+                            if len(rows) < _FILL_PAGE_LIMIT:
+                                break
+                            try:
+                                from_id = int(rows[-1]["id"]) + 1
+                            except (KeyError, TypeError, ValueError):
+                                break
+        except Exception as exc:  # noqa: BLE001 — best-effort, never raise
+            logger.warning("exchange_fills_fetch_failed", exchange="binance", error=str(exc))
+            return None
+        return fills
+
+    @staticmethod
+    def _parse_fill(row: dict, base: str, quote: str) -> Fill | None:
+        try:
+            return Fill(
+                asset=base,
+                side="buy" if row.get("isBuyer") else "sell",
+                qty=float(row["qty"]),
+                quote_asset=quote,
+                quote_qty=float(row["quoteQty"]),
+                fee_asset=str(row.get("commissionAsset") or ""),
+                fee_qty=max(float(row.get("commission") or 0.0), 0.0),
+                ts_ms=int(row["time"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
 
     async def validate_key(self) -> bool:
         params = self._sign({"timestamp": int(time.time() * 1000)})

@@ -1,8 +1,33 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 import httpx
 
 from app.schemas.portfolio import Balance
+
+
+@dataclass(frozen=True)
+class Fill:
+    """One executed spot trade as reported by the venue's own trade history.
+
+    Convention (all adapters MUST follow it so the cost-basis maths is uniform):
+    - `asset` is the base symbol, normalised the same way `get_balances` does.
+    - `qty` is the GROSS base amount of the fill, before any fee.
+    - `quote_qty` is the GROSS quote amount (price × qty), before any fee.
+    - The fee is reported separately as `fee_asset`/`fee_qty` (always >= 0;
+      rebates are reported as 0). A buy whose fee is charged in the base asset
+      therefore credited `qty - fee_qty` to the account; a fee in the quote
+      asset raised the effective cost to `quote_qty + fee_qty`.
+    """
+
+    asset: str
+    side: str  # "buy" | "sell"
+    qty: float
+    quote_asset: str
+    quote_qty: float
+    fee_asset: str
+    fee_qty: float
+    ts_ms: int
 
 
 class ExchangeAdapter(ABC):
@@ -49,6 +74,18 @@ class ExchangeAdapter(ABC):
         price service. Implementations must never raise.
         """
         return {}
+
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        """This venue's own spot trade history for `assets`. Best-effort.
+
+        Returns None when the venue does not expose trade history through
+        this adapter (or the fetch failed), [] when it does but there are no
+        trades, otherwise the fills in any order. `assets` is ordered by
+        descending USD value so adapters with a per-asset call budget drop
+        the dust first. Implementations must never raise and must never log
+        the key.
+        """
+        return None
 
     # ── Trading (Phase 2) ────────────────────────────────────────────────────
     # Default implementations refuse trading. Adapters that support spot trading

@@ -429,6 +429,47 @@ async def test_aggregate_portfolio_sums_all_profiles(client):
     assert body["asset_totals"]["DOGE"] == pytest.approx(ALT_USD["DOGE"])
 
 
+async def test_cost_basis_endpoint_returns_avco_per_exchange(client):
+    """C-057: GET /portfolio/profile/{id}/cost-basis — demo fills → AVCO per held coin."""
+    user, headers, profile = await _owner_with_key(client)
+
+    r = await client.get(f"{API}/portfolio/profile/{profile['id']}/cost-basis", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["profile_id"] == profile["id"]
+    assert body["computed_at"].endswith("Z") or "+00:00" in body["computed_at"]
+    assert len(body["exchanges"]) == 1
+    ex = body["exchanges"][0]
+    assert ex["exchange"] == "demo" and ex["supported"] is True
+
+    by_asset = {a["asset"]: a for a in ex["assets"]}
+    assert set(by_asset) == {"BTC", "ETH", "SOL", "ADA"}  # USDT excluded
+    # BTC: 0.25 (−0.00025 fee in BTC) @ 10500 + 0.2 @ 11600 (+11.6 fee), 0.02 sold
+    btc = by_asset["BTC"]
+    assert btc["avg_buy_price"] == pytest.approx((10_500 + 11_611.6) / 0.44975)
+    assert btc["bought_qty"] == pytest.approx(0.44975)
+    assert btc["coverage"] == "full"
+    assert by_asset["SOL"] == {"asset": "SOL", "avg_buy_price": pytest.approx(2702.7 / 30),
+                               "bought_qty": 30.0, "coverage": "full"}
+    ada = by_asset["ADA"]
+    assert ada["avg_buy_price"] is None and ada["coverage"] == "none"
+
+
+async def test_cost_basis_foreign_profile_forbidden(client):
+    """C-058: cost basis of another user's profile → 403; unknown profile → 404."""
+    user, headers, profile = await _owner_with_key(client)
+    mallory = await _seed_user("mallory@example.com")
+
+    r = await client.get(f"{API}/portfolio/profile/{profile['id']}/cost-basis", headers=_auth(mallory))
+    assert r.status_code == 403, r.text
+
+    r = await client.get(f"{API}/portfolio/profile/9999/cost-basis", headers=headers)
+    assert r.status_code == 404, r.text
+
+    r = await client.get(f"{API}/portfolio/profile/{profile['id']}/cost-basis")
+    assert r.status_code in (401, 403), r.text
+
+
 # ═════════════════════════════ IC-5 SHARE PERMISSION MATRIX ══════════════════
 
 _ALL_ON = dict(show_total_value=True, show_coin_amounts=True,
@@ -541,6 +582,80 @@ async def test_share_view_profile_name_never_leaks(client):
     _, view2 = await _shared_view(client, headers, profile["id"], label="Public Label")
     assert view2["profile_name"] == "Public Label"
     assert secret_name not in str(view2)
+
+
+async def test_share_view_avg_buy_price_off_by_default_and_no_fills_fetched(client, monkeypatch):
+    """C-079a: show_avg_buy_price defaults False → avg_buy_price null and NO trade
+    history is fetched (the exchange call is the expensive part)."""
+    from app.exchanges.demo import DemoAdapter
+
+    calls = []
+
+    async def counting_get_fills(self, assets):
+        calls.append(list(assets))
+        return []
+
+    monkeypatch.setattr(DemoAdapter, "get_fills", counting_get_fills)
+
+    user, headers, profile = await _owner_with_key(client)
+    link, view = await _shared_view(client, headers, profile["id"], **_ALL_ON)
+
+    assert link["show_avg_buy_price"] is False
+    assert view["show_avg_buy_price"] is False
+    for a in view["exchanges"][0]["assets"]:
+        assert a["avg_buy_price"] is None
+    assert calls == [], "trade history must not be fetched for an opted-out link"
+
+
+async def test_share_view_avg_buy_price_on_populates_from_exchange_fills(client):
+    """C-079b: show_avg_buy_price=True → avg_buy_price populated from the venue's own
+    trade history (AVCO); assets with no stable-quoted buys stay null."""
+    user, headers, profile = await _owner_with_key(client)
+    link, view = await _shared_view(client, headers, profile["id"],
+                                    **{**_ALL_ON, "show_avg_buy_price": True})
+
+    assert link["show_avg_buy_price"] is True
+    assert view["show_avg_buy_price"] is True
+    by_asset = {a["asset"]: a for a in view["exchanges"][0]["assets"]}
+    # Demo fills: 30 SOL for 2700 USDT + 2.7 USDT fee → 90.09
+    assert by_asset["SOL"]["avg_buy_price"] == pytest.approx(2702.7 / 30)
+    # ETH: 2 @ 4400 USDC (+4.4) and 1.25 @ 3500 USDT (+3.5) over 3.25 ETH
+    assert by_asset["ETH"]["avg_buy_price"] == pytest.approx((4404.4 + 3503.5) / 3.25)
+    assert by_asset["ADA"]["avg_buy_price"] is None   # bought with BTC → not priced
+    assert by_asset["USDT"]["avg_buy_price"] is None  # stablecoins have no buy price
+
+
+async def test_share_view_survives_cost_basis_failure(client, monkeypatch):
+    """C-079c: trade-history failure → share page still renders, avg_buy_price null."""
+    from app.exchanges.demo import DemoAdapter
+
+    async def broken(self, assets):
+        raise RuntimeError("exchange down")
+
+    monkeypatch.setattr(DemoAdapter, "get_fills", broken)
+
+    user, headers, profile = await _owner_with_key(client)
+    _, view = await _shared_view(client, headers, profile["id"],
+                                 **{**_ALL_ON, "show_avg_buy_price": True})
+    assert view["total_usd"] == pytest.approx(MAIN_TOTAL)
+    for a in view["exchanges"][0]["assets"]:
+        assert a["avg_buy_price"] is None
+
+
+async def test_patch_share_link_toggles_avg_buy_price(client):
+    """C-079d: PATCH show_avg_buy_price applies to the next public view."""
+    user, headers, profile = await _owner_with_key(client)
+    link = await _mk_share(client, headers, profile["id"], show_coin_amounts=True)
+
+    r = await client.patch(f"{API}/share/{link['id']}",
+                           json={"show_avg_buy_price": True}, headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["show_avg_buy_price"] is True
+
+    view = (await client.get(f"{API}/public/share/{link['token']}")).json()
+    assert view["show_avg_buy_price"] is True
+    by_asset = {a["asset"]: a for a in view["exchanges"][0]["assets"]}
+    assert by_asset["SOL"]["avg_buy_price"] == pytest.approx(2702.7 / 30)
 
 
 # ═════════════════════════════ IC-6 SHARE LIFECYCLE ══════════════════════════
@@ -1000,6 +1115,7 @@ async def test_rate_limits_are_registered_on_endpoints(client):
 
     portfolio_limits = portfolio_api.limiter._route_limits
     assert any("portfolio_for_profile" in name for name in portfolio_limits)
+    assert any("cost_basis_for_profile" in name for name in portfolio_limits)
     assert any("aggregate_portfolio" in name for name in portfolio_limits)
 
     # The public share view is declared at 30/minute; portfolio at settings value (10/minute).

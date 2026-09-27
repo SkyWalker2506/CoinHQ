@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.logging import logger
 from app.core.security import get_current_user
 from app.models.exchange_key import ExchangeKey
 from app.models.followed_portfolio import FollowedPortfolio
@@ -24,8 +25,33 @@ from app.schemas.share_link import (
     ShareLinkUpdate,
 )
 from app.schemas.trade import TradeOrderRequest, TradeOrderResponse
+from app.services.cost_basis_service import get_cost_basis
 from app.services.portfolio_service import get_portfolio
 from app.services.trade_service import execute_trade, spent_today_usd
+
+
+async def _avg_buy_prices(request: Request, profile, keys) -> dict[str, dict[str, float]]:
+    """exchange → asset → avg buy price. Best-effort: the share page must
+    still render when trade history is unavailable, so failures yield {}."""
+    try:
+        state = request.app.state
+        result = await get_cost_basis(
+            profile.id,
+            profile.name,
+            keys,
+            redis=getattr(state, "redis", None),
+            http_client=getattr(state, "http_client", None),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("share_cost_basis_failed", profile_id=profile.id, error=str(exc))
+        return {}
+    return {
+        ex.exchange: {
+            a.asset: a.avg_buy_price for a in ex.assets if a.avg_buy_price is not None
+        }
+        for ex in result.exchanges
+        if ex.supported
+    }
 
 
 async def _profile_has_trade_key(db: AsyncSession, profile_id: int) -> bool:
@@ -66,6 +92,7 @@ async def create_share_link(
         show_coin_amounts=payload.show_coin_amounts,
         show_exchange_names=payload.show_exchange_names,
         show_allocation_pct=payload.show_allocation_pct,
+        show_avg_buy_price=payload.show_avg_buy_price,
         expires_at=payload.expires_at,
         label=payload.label,
         allow_follow=payload.allow_follow,
@@ -260,6 +287,11 @@ async def public_share_view(
 
     portfolio = await get_portfolio(link.profile_id, profile.name, keys)
 
+    # Trade history is a separate, slow fetch — only paid for opted-in links.
+    avg_prices: dict[str, dict[str, float]] = {}
+    if link.show_avg_buy_price:
+        avg_prices = await _avg_buy_prices(request, profile, keys)
+
     grand_total = portfolio.total_usd
     filtered_exchanges: list[SharedExchange] = []
     for ex in portfolio.exchanges:
@@ -276,6 +308,7 @@ async def public_share_view(
                 amount=bal.total if link.show_coin_amounts else None,
                 usd_value=bal.usd_value if link.show_total_value else None,
                 allocation_pct=alloc_pct,
+                avg_buy_price=avg_prices.get(ex.exchange, {}).get(bal.asset),
             ))
         filtered_exchanges.append(SharedExchange(
             exchange_name=exchange_label,
@@ -309,6 +342,7 @@ async def public_share_view(
         show_coin_amounts=link.show_coin_amounts,
         show_exchange_names=link.show_exchange_names,
         show_allocation_pct=link.show_allocation_pct,
+        show_avg_buy_price=link.show_avg_buy_price,
         allow_follow=link.allow_follow,
         can_trade=link.can_trade,
         trade_direction=link.trade_direction,

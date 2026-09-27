@@ -8,10 +8,15 @@ from datetime import UTC, datetime
 import httpx
 
 from app.core.logging import logger
-from app.exchanges.base import ExchangeAdapter
+from app.exchanges.base import ExchangeAdapter, Fill
 from app.schemas.portfolio import Balance
 
 OKX_BASE = "https://www.okx.com"
+
+# /api/v5/trade/fills-history covers the last 3 months; older pages are
+# reached with after=<billId of the last row>. 100 rows per page.
+_FILL_PAGE_LIMIT = 100
+_FILL_MAX_PAGES = 10
 
 
 class OKXAdapter(ExchangeAdapter):
@@ -105,6 +110,67 @@ class OKXAdapter(ExchangeAdapter):
                         )
                     )
         return balances
+
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        """GET /api/v5/trade/fills-history?instType=SPOT (last 3 months).
+
+        The signed requestPath must include the query string. Fees come back
+        negative (a deduction) in `feeCcy` — base for buys, quote for sells.
+        """
+        wanted = {a.upper() for a in assets}
+        if not wanted:
+            return []
+        fills: list[Fill] = []
+        after: str | None = None
+        try:
+            async with self._client() as client:
+                for _ in range(_FILL_MAX_PAGES):
+                    params: dict[str, str] = {"instType": "SPOT", "limit": str(_FILL_PAGE_LIMIT)}
+                    if after:
+                        params["after"] = after
+                    query = "&".join(f"{k}={v}" for k, v in params.items())
+                    path = f"/api/v5/trade/fills-history?{query}"
+                    resp = await client.get(
+                        f"{OKX_BASE}{path}", headers=self._headers("GET", path)
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if str(data.get("code", "0")) != "0":
+                        raise ValueError(f"OKX error code {data.get('code')}")
+                    rows = data.get("data") or []
+                    for row in rows:
+                        fill = self._parse_fill(row)
+                        if fill is not None and fill.asset in wanted:
+                            fills.append(fill)
+                    if len(rows) < _FILL_PAGE_LIMIT:
+                        break
+                    after = str(rows[-1].get("billId") or "")
+                    if not after:
+                        break
+        except Exception as exc:  # noqa: BLE001 — best-effort, never raise
+            logger.warning("exchange_fills_fetch_failed", exchange="okx", error=str(exc))
+            return None
+        return fills
+
+    @staticmethod
+    def _parse_fill(row: dict) -> Fill | None:
+        try:
+            base, quote = str(row["instId"]).split("-", 1)
+            qty = float(row["fillSz"])
+            price = float(row["fillPx"])
+            fee = float(row.get("fee") or 0.0)
+            return Fill(
+                asset=base.upper(),
+                side=str(row["side"]).lower(),
+                qty=qty,
+                quote_asset=quote.upper(),
+                quote_qty=qty * price,
+                fee_asset=str(row.get("feeCcy") or "").upper(),
+                fee_qty=max(-fee, 0.0),  # negative = deducted; positive = rebate
+                ts_ms=int(row.get("fillTime") or row["ts"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
 
     async def validate_key(self) -> bool:
         path = "/api/v5/users/me"

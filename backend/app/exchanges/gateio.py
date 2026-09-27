@@ -1,17 +1,32 @@
+import asyncio
 import hashlib
 import hmac
 import json
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import urlencode
 
 import httpx
 
 from app.core.logging import logger
-from app.exchanges.base import ExchangeAdapter
+from app.exchanges.base import ExchangeAdapter, Fill
 from app.schemas.portfolio import Balance
 
 GATEIO_BASE = "https://api.gateio.ws"
 GATEIO_PREFIX = "/api/v4"
+
+# /spot/my_trades: with no time filter only the last 7 days come back, and a
+# from/to range may not span more than 30 days (official v4 docs). History is
+# therefore walked backwards in 30-day windows. `limit` is documented as
+# max 1000, but the older docs said 100, so a page is treated as "possibly
+# full" from 100 rows and the next page is requested — a clamped server can
+# never make us drop trades.
+_FILL_WINDOW_SECONDS = 30 * 24 * 3600
+_FILL_MAX_WINDOWS = 24  # ~2 years
+_FILL_PAGE_LIMIT = 1000
+_FILL_FULL_PAGE = 100
+_FILL_MAX_CALLS = 60
+_FILL_CONCURRENCY = 4
 
 
 class GateioAdapter(ExchangeAdapter):
@@ -95,6 +110,98 @@ class GateioAdapter(ExchangeAdapter):
                     Balance(asset=item["currency"], free=free, locked=locked, total=total)
                 )
         return balances
+
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        """GET /spot/my_trades across all pairs, 30-day windows back from now.
+
+        One window series covers every pair at once (currency_pair is
+        optional), so the cost does not grow with the number of held assets;
+        the result is filtered to `assets` afterwards. Windows are fetched a
+        few at a time; each window pages until a short page arrives.
+        """
+        wanted = {a.upper() for a in assets}
+        if not wanted:
+            return []
+        now = int(time.time())
+        windows = [
+            (now - (i + 1) * _FILL_WINDOW_SECONDS, now - i * _FILL_WINDOW_SECONDS)
+            for i in range(_FILL_MAX_WINDOWS)
+        ]
+        budget = {"calls": 0}
+        sem = asyncio.Semaphore(_FILL_CONCURRENCY)
+
+        async def fetch_window(client: httpx.AsyncClient, start: int, end: int) -> list[dict]:
+            rows: list[dict] = []
+            page = 1
+            async with sem:
+                while True:
+                    if budget["calls"] >= _FILL_MAX_CALLS:
+                        logger.warning(
+                            "exchange_fills_call_budget_exhausted",
+                            exchange="gateio",
+                            calls=budget["calls"],
+                        )
+                        return rows
+                    budget["calls"] += 1
+                    path = f"{GATEIO_PREFIX}/spot/my_trades"
+                    query = urlencode({
+                        "from": start,
+                        "to": end,
+                        "limit": _FILL_PAGE_LIMIT,
+                        "page": page,
+                    })
+                    resp = await client.get(
+                        f"{GATEIO_BASE}{path}?{query}",
+                        headers=self._headers("GET", path, query),
+                    )
+                    resp.raise_for_status()
+                    batch = resp.json()
+                    if not isinstance(batch, list):
+                        return rows
+                    rows.extend(batch)
+                    if len(batch) < _FILL_FULL_PAGE:
+                        return rows
+                    page += 1
+
+        try:
+            async with self._client() as client:
+                results = await asyncio.gather(
+                    *(fetch_window(client, s, e) for s, e in windows)
+                )
+        except Exception as exc:  # noqa: BLE001 — best-effort, never raise
+            logger.warning("exchange_fills_fetch_failed", exchange="gateio", error=str(exc))
+            return None
+
+        fills: list[Fill] = []
+        for rows in results:
+            for row in rows:
+                fill = self._parse_fill(row)
+                if fill is not None and fill.asset in wanted:
+                    fills.append(fill)
+        return fills
+
+    @staticmethod
+    def _parse_fill(row: dict) -> Fill | None:
+        try:
+            pair = str(row["currency_pair"])
+            base, quote = pair.split("_", 1)
+            qty = float(row["amount"])
+            price = float(row["price"])
+            ts_raw = row.get("create_time_ms") or row.get("create_time")
+            ts = float(ts_raw)
+            ts_ms = int(ts if ts > 1e11 else ts * 1000)
+            return Fill(
+                asset=base.upper(),
+                side=str(row["side"]).lower(),
+                qty=qty,
+                quote_asset=quote.upper(),
+                quote_qty=qty * price,
+                fee_asset=str(row.get("fee_currency") or "").upper(),
+                fee_qty=max(float(row.get("fee") or 0.0), 0.0),
+                ts_ms=ts_ms,
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
 
     async def validate_key(self) -> bool:
         path = f"{GATEIO_PREFIX}/spot/accounts"

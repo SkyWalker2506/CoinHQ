@@ -7,10 +7,16 @@ from contextlib import asynccontextmanager
 import httpx
 
 from app.core.logging import logger
-from app.exchanges.base import ExchangeAdapter
+from app.exchanges.base import ExchangeAdapter, Fill
 from app.schemas.portfolio import Balance
 
 KRAKEN_BASE = "https://api.kraken.com"
+
+# /0/private/TradesHistory pages with `ofs`, up to 100 rows per call, and
+# costs 2 points of a rate-limit counter that tops out at 15-20, so only a
+# handful of pages can be pulled in one go.
+_FILL_PAGE_LIMIT = 100
+_FILL_MAX_PAGES = 5
 
 # Kraken asset name normalization map for common tickers
 _KRAKEN_ASSET_MAP = {
@@ -130,6 +136,81 @@ class KrakenAdapter(ExchangeAdapter):
                     )
                 )
         return balances
+
+    async def get_fills(self, assets: list[str]) -> list[Fill] | None:
+        """POST /0/private/TradesHistory, offset-paged, newest first.
+
+        Trades name their pair by Kraken's internal code (XXBTZUSD), so the
+        public AssetPairs list is fetched once to recover base and quote.
+        `vol` is the base amount, `cost` and `fee` are in the quote currency.
+        """
+        wanted = {a.upper() for a in assets}
+        if not wanted:
+            return []
+        fills: list[Fill] = []
+        try:
+            async with self._client() as client:
+                pairs_resp = await client.get(f"{KRAKEN_BASE}/0/public/AssetPairs", timeout=20)
+                pairs_resp.raise_for_status()
+                pairs = pairs_resp.json().get("result", {}) or {}
+                pair_map: dict[str, tuple[str, str]] = {}
+                for key, meta in pairs.items():
+                    base = _normalize_kraken_asset(str(meta.get("base", "")))
+                    quote = _normalize_kraken_asset(str(meta.get("quote", "")))
+                    if base and quote:
+                        pair_map[key] = (base, quote)
+                        if meta.get("altname"):
+                            pair_map.setdefault(str(meta["altname"]), (base, quote))
+
+                offset = 0
+                for _ in range(_FILL_MAX_PAGES):
+                    path = "/0/private/TradesHistory"
+                    nonce = str(int(time.time() * 1000))
+                    data = f"nonce={nonce}&ofs={offset}&limit={_FILL_PAGE_LIMIT}"
+                    resp = await client.post(
+                        f"{KRAKEN_BASE}{path}",
+                        headers=self._headers(path, nonce, data),
+                        content=data,
+                    )
+                    resp.raise_for_status()
+                    body = resp.json()
+                    if body.get("error"):
+                        raise ValueError(f"Kraken API error: {body['error']}")
+                    result = body.get("result", {}) or {}
+                    trades = result.get("trades", {}) or {}
+                    for row in trades.values():
+                        fill = self._parse_fill(row, pair_map)
+                        if fill is not None and fill.asset in wanted:
+                            fills.append(fill)
+                    offset += len(trades)
+                    total = int(result.get("count") or 0)
+                    if not trades or offset >= total:
+                        break
+        except Exception as exc:  # noqa: BLE001 — best-effort, never raise
+            logger.warning("exchange_fills_fetch_failed", exchange="kraken", error=str(exc))
+            return None
+        return fills
+
+    @staticmethod
+    def _parse_fill(row: dict, pair_map: dict[str, tuple[str, str]]) -> Fill | None:
+        try:
+            pair = str(row["pair"])
+            parts = pair_map.get(pair)
+            if parts is None:
+                return None
+            base, quote = parts
+            return Fill(
+                asset=base,
+                side=str(row["type"]).lower(),
+                qty=float(row["vol"]),
+                quote_asset=quote,
+                quote_qty=float(row["cost"]),
+                fee_asset=quote,
+                fee_qty=max(float(row.get("fee") or 0.0), 0.0),
+                ts_ms=int(float(row["time"]) * 1000),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
 
     async def validate_key(self) -> bool:
         """Validate key and check for read-only permissions via GetWebSocketsToken endpoint."""

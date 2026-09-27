@@ -12,6 +12,7 @@ class ShareLinkCreate(BaseModel):
     show_coin_amounts: bool = False
     show_exchange_names: bool = False
     show_allocation_pct: bool = True
+    show_avg_buy_price: bool = False
     expires_at: datetime | None = None
     label: str | None = None
     allow_follow: bool = True
@@ -29,6 +30,7 @@ class ShareLinkUpdate(BaseModel):
     show_coin_amounts: bool | None = None
     show_exchange_names: bool | None = None
     show_allocation_pct: bool | None = None
+    show_avg_buy_price: bool | None = None
     expires_at: datetime | None = None
     label: str | None = None
     allow_follow: bool | None = None
@@ -47,6 +49,7 @@ class ShareLinkResponse(BaseModel):
     show_coin_amounts: bool
     show_exchange_names: bool
     show_allocation_pct: bool
+    show_avg_buy_price: bool = False
     expires_at: datetime | None
     is_active: bool
     label: str | None
@@ -75,6 +78,7 @@ class SharedAsset(BaseModel):
     amount: float | None = None        # None when show_coin_amounts=False
     usd_value: float | None = None
     allocation_pct: float | None = None  # populated when show_allocation_pct=True
+    avg_buy_price: float | None = None   # populated when show_avg_buy_price=True
 
 
 class SharedExchange(BaseModel):
@@ -100,6 +104,7 @@ class SharedPortfolioView(BaseModel):
     show_coin_amounts: bool
     show_exchange_names: bool
     show_allocation_pct: bool
+    show_avg_buy_price: bool = False
     allow_follow: bool = True
     # Delegated trade context (populated only when can_trade is True)
     can_trade: bool = False
