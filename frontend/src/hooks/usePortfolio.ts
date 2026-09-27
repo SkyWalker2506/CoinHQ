@@ -1,5 +1,7 @@
 import useSWR from 'swr'
 import type { TradeOrder, PortfolioSnapshot, PnlResponse, CostBasisResponse } from '@/lib/types'
+import { getCostBasis } from '@/lib/api'
+import { mergeCostBasis } from '@/lib/costBasis'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -34,10 +36,21 @@ export function usePortfolioHistory(profileId: number | null, days: number = 30)
 // Cost basis / average buy price. It can take seconds to compute on the
 // backend, so it is fetched independently of the portfolio (never blocks the
 // dashboard) and changes slowly — no focus/interval revalidation storms.
-export function useCostBasis(profileId: number | null) {
-  const { data, error, isLoading } = useSWR<CostBasisResponse>(
-    profileId != null ? `${BASE_URL}/api/v1/portfolio/profile/${profileId}/cost-basis` : null,
-    fetcher,
+/**
+ * Average buy price for one profile, or for several merged (the dashboard's
+ * "All Profiles" view). One SWR entry either way; a profile whose cost basis
+ * fails is dropped rather than failing the rest.
+ */
+export function useCostBasis(profileIds: number[]) {
+  const key = profileIds.length > 0 ? `cost-basis:${profileIds.join(',')}` : null
+  const { data, error, isLoading } = useSWR<CostBasisResponse | undefined>(
+    key,
+    async () => {
+      const settled = await Promise.allSettled(profileIds.map((id) => getCostBasis(id)))
+      return mergeCostBasis(
+        settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
+      )
+    },
     { revalidateOnFocus: false, revalidateIfStale: false }
   )
   return { costBasis: data, error, isLoading }

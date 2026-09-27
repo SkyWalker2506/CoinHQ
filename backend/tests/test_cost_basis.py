@@ -611,3 +611,30 @@ async def test_service_survives_redis_outage(_no_decrypt):
 # Endpoint auth (403 foreign profile / 404 / 401) is exercised over real HTTP in
 # tests/test_integration_conditions.py — the slowapi decorator on the route
 # refuses anything but a genuine starlette Request, so it cannot be unit-called.
+
+
+async def test_service_caches_a_failed_venue_only_briefly(_no_decrypt):
+    """A venue that supports history but failed this time (timeout, 5xx) must
+    not be pinned as "unsupported" for the full 15-minute window."""
+    portfolio = _portfolio({"gateio": [_bal("UNI", 10, 50)]})
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    with patch.object(cost_basis_service, "get_portfolio", AsyncMock(return_value=portfolio)), \
+         patch.object(cost_basis_service, "get_adapter", return_value=_FakeAdapter(None)):
+        result = await get_cost_basis(1, "p", [_key("gateio")], redis=redis)
+    assert result.exchanges[0].supported is False
+    assert redis.setex.await_args.args[1] == cost_basis_service.COST_BASIS_DEGRADED_TTL
+
+
+async def test_service_caches_a_genuinely_unsupported_venue_normally(_no_decrypt):
+    """Binance TR never has fills here; recomputing it every minute buys nothing."""
+    from app.exchanges.binancetr import BinanceTRAdapter
+
+    portfolio = _portfolio({"binancetr": [_bal("BTC", 1, 60000)]})
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    with patch.object(cost_basis_service, "get_portfolio", AsyncMock(return_value=portfolio)), \
+         patch.object(cost_basis_service, "get_adapter", return_value=BinanceTRAdapter("k", "s")):
+        result = await get_cost_basis(1, "p", [_key("binancetr")], redis=redis)
+    assert result.exchanges[0].supported is False
+    assert redis.setex.await_args.args[1] == cost_basis_service.COST_BASIS_CACHE_TTL

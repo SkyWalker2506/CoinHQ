@@ -35,7 +35,7 @@ import redis.asyncio as aioredis
 
 from app.core.logging import logger
 from app.core.security import decrypt
-from app.exchanges.base import Fill
+from app.exchanges.base import ExchangeAdapter, Fill
 from app.exchanges.factory import get_adapter
 from app.models.exchange_key import ExchangeKey
 from app.schemas.cost_basis import AssetCostBasis, CostBasisResponse, ExchangeCostBasis
@@ -47,6 +47,9 @@ _stdlib_logger = logging.getLogger(__name__)
 STABLE_QUOTES = frozenset({"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "DAI", "USD"})
 
 COST_BASIS_CACHE_TTL = 15 * 60
+# A venue that supports trade history but failed this time (timeout, 5xx,
+# rate limit) must not be pinned as "unsupported" for the full window.
+COST_BASIS_DEGRADED_TTL = 60
 _FULL_COVERAGE_RATIO = 0.99
 _EPS = 1e-12
 
@@ -154,7 +157,8 @@ async def _exchange_cost_basis(
     key: ExchangeKey,
     balances: list[Balance],
     http_client: httpx.AsyncClient | None,
-) -> ExchangeCostBasis:
+) -> tuple[ExchangeCostBasis, bool]:
+    """Cost basis for one venue, plus whether a supported venue failed."""
     # Stablecoins have no meaningful buy price; dust is dropped by the
     # adapters' call budgets, so the most valuable assets go first.
     held_balances = sorted(
@@ -163,21 +167,24 @@ async def _exchange_cost_basis(
         reverse=True,
     )
     if not held_balances:
-        return ExchangeCostBasis(exchange=key.exchange, supported=True, assets=[])
+        return ExchangeCostBasis(exchange=key.exchange, supported=True, assets=[]), False
 
     api_key = decrypt(key.encrypted_key)
     api_secret = decrypt(key.encrypted_secret)
     adapter = get_adapter(key.exchange, api_key, api_secret, http_client=http_client)
     fills = await adapter.get_fills([b.asset for b in held_balances])
     if fills is None:
-        return ExchangeCostBasis(exchange=key.exchange, supported=False, assets=[])
+        # Only adapters that override get_fills can have *failed*; the base
+        # default means the venue genuinely has no trade history here.
+        failed = type(adapter).get_fills is not ExchangeAdapter.get_fills
+        return ExchangeCostBasis(exchange=key.exchange, supported=False, assets=[]), failed
     logger.info("api_key_used", key_id=key.id, exchange=key.exchange,
                 profile_id=key.profile_id, purpose="fills")
 
     held = {b.asset: b.total for b in held_balances}
     return ExchangeCostBasis(
         exchange=key.exchange, supported=True, assets=compute_avco(fills, held)
-    )
+    ), False
 
 
 async def get_cost_basis(
@@ -218,12 +225,16 @@ async def get_cost_basis(
     results = await asyncio.gather(*(job for _, job in jobs), return_exceptions=True)
 
     exchanges: list[ExchangeCostBasis] = []
+    degraded = False
     for (exchange, _), result in zip(jobs, results):
         if isinstance(result, BaseException):
             _stdlib_logger.error("Cost basis failed for %s: %s", exchange, result)
             exchanges.append(ExchangeCostBasis(exchange=exchange, supported=False, assets=[]))
+            degraded = True
         else:
-            exchanges.append(result)
+            venue, failed = result
+            exchanges.append(venue)
+            degraded = degraded or failed
 
     response = CostBasisResponse(
         profile_id=profile_id,
@@ -231,11 +242,12 @@ async def get_cost_basis(
         exchanges=exchanges,
     )
 
+    ttl = COST_BASIS_DEGRADED_TTL if degraded else COST_BASIS_CACHE_TTL
     data = json.loads(response.model_dump_json())
-    _memo_set(cache_key, data, COST_BASIS_CACHE_TTL)
+    _memo_set(cache_key, data, ttl)
     if redis is not None:
         try:
-            await redis.setex(cache_key, COST_BASIS_CACHE_TTL, response.model_dump_json())
+            await redis.setex(cache_key, ttl, response.model_dump_json())
         except Exception as exc:  # noqa: BLE001
             _stdlib_logger.warning("Cost-basis cache write failed: %s", exc)
 

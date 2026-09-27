@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { CostBasisResponse, ExchangeBalance } from "@/lib/types";
+import { formatUnitPrice } from "@/lib/costBasis";
 import { EmptyState } from "./EmptyState";
 
 interface Props {
@@ -50,12 +51,6 @@ function formatAmount(value: number): string {
 }
 
 /** Adaptive precision so a sub-cent avg price doesn't round away to $0.00. */
-function formatAvgPrice(value: number): string {
-  if (value >= 1) return `$${value.toFixed(2)}`;
-  if (value >= 0.01) return `$${value.toFixed(4)}`;
-  return `$${value.toFixed(6)}`;
-}
-
 const PARTIAL_COVERAGE_TITLE =
   "Partial history: some of this holding came from deposits or older trades";
 
@@ -149,7 +144,7 @@ function ExchangeItem({
                       className="text-xs text-gray-500"
                       title={avgInfo.partial ? PARTIAL_COVERAGE_TITLE : undefined}
                     >
-                      {avgInfo.partial && "~"}Avg {formatAvgPrice(avgInfo.avgBuyPrice)}
+                      {avgInfo.partial && "~"}Avg {formatUnitPrice(avgInfo.avgBuyPrice)}
                     </p>
                   )}
                 </div>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { SharedExchange } from "@/lib/types";
+import { formatUnitPrice } from "@/lib/costBasis";
 
 interface Props {
   exchanges: SharedExchange[];
@@ -30,13 +31,6 @@ function fmtUsd(val: number | null): string {
 }
 
 /** Adaptive precision so a sub-cent avg price doesn't round away to $0.00. */
-function fmtAvgPrice(val: number | null): string {
-  if (val == null) return "—";
-  if (val >= 1) return `$${val.toFixed(2)}`;
-  if (val >= 0.01) return `$${val.toFixed(4)}`;
-  return `$${val.toFixed(6)}`;
-}
-
 function fmtAmount(val: number | null): string {
   if (val == null) return "—";
   if (val >= 1000) return val.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -370,7 +364,7 @@ export default function SharedHoldings({
                             <span className="sm:hidden block text-[11px] text-gray-500 tabular-nums">
                               {[
                                 showCoinAmounts ? fmtAmount(row.amount) : null,
-                                showAvgBuyPrice ? `avg ${fmtAvgPrice(row.avg_buy_price)}` : null,
+                                showAvgBuyPrice && row.avg_buy_price != null ? `avg ${formatUnitPrice(row.avg_buy_price)}` : null,
                               ]
                                 .filter(Boolean)
                                 .join(" · ")}
@@ -403,7 +397,7 @@ export default function SharedHoldings({
                         )}
                         {showAvgBuyPrice && (
                           <td className="hidden sm:table-cell px-4 sm:px-5 py-2.5 sm:py-3 text-right text-gray-400 tabular-nums">
-                            {fmtAvgPrice(row.avg_buy_price)}
+                            {row.avg_buy_price != null ? formatUnitPrice(row.avg_buy_price) : "—"}
                           </td>
                         )}
                       </tr>

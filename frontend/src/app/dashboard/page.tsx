@@ -28,10 +28,10 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   // Cost basis (average buy price) is fetched independently — it can be slow
-  // and must never hold up the rest of the dashboard. Only meaningful for a
-  // single profile, not the combined "aggregate" view.
+  // and must never hold up the rest of the dashboard. "All Profiles" is the
+  // default view, so it merges every profile's rather than showing none.
   const { costBasis } = useCostBasis(
-    typeof selectedProfileId === "number" ? selectedProfileId : null
+    typeof selectedProfileId === "number" ? [selectedProfileId] : profiles.map((p: { id: number }) => p.id)
   );
 
   useEffect(() => {
