@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPortfolio, getAggregatePortfolio } from "@/lib/api";
 import type { PortfolioResponse, AggregatePortfolioResponse } from "@/lib/types";
-import { useProfiles } from "@/hooks/usePortfolio";
+import { useProfiles, useCostBasis } from "@/hooks/usePortfolio";
 import ProfileSwitcher from "@/components/ProfileSwitcher";
 import PortfolioSummary from "@/components/PortfolioSummary";
 import dynamic from "next/dynamic";
@@ -27,6 +27,12 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Cost basis (average buy price) is fetched independently — it can be slow
+  // and must never hold up the rest of the dashboard. Only meaningful for a
+  // single profile, not the combined "aggregate" view.
+  const { costBasis } = useCostBasis(
+    typeof selectedProfileId === "number" ? selectedProfileId : null
+  );
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -109,7 +115,7 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <AllocationChart exchanges={exchanges} />
-            <ExchangeList exchanges={exchanges} />
+            <ExchangeList exchanges={exchanges} costBasis={costBasis} />
           </div>
         </div>
       )}

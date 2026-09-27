@@ -11,6 +11,7 @@ import type {
   TradeOrder,
   TradeOrderRequest,
   PnlResponse,
+  CostBasisResponse,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -130,6 +131,11 @@ export const getPortfolio = (profileId: number) =>
 
 export const getAggregatePortfolio = () =>
   request<AggregatePortfolioResponse>("/api/v1/portfolio/aggregate");
+
+// Cost basis / average buy price — can be slow, so it is always fetched
+// separately from the portfolio and never blocks the dashboard.
+export const getCostBasis = (profileId: number) =>
+  request<CostBasisResponse>(`/api/v1/portfolio/profile/${profileId}/cost-basis`);
 
 // Share Links
 export const getShareLinks = (profileId?: number) => {

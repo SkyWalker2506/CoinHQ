@@ -8,9 +8,10 @@ interface Props {
   showCoinAmounts: boolean;
   showTotalValue: boolean;
   showAllocationPct: boolean;
+  showAvgBuyPrice: boolean;
 }
 
-type SortKey = "value" | "amount" | "asset" | "allocation";
+type SortKey = "value" | "amount" | "asset" | "allocation" | "avgBuyPrice";
 type SortDir = "asc" | "desc";
 type Grouping = "combined" | "exchange";
 
@@ -19,12 +20,21 @@ interface Row {
   amount: number | null;
   usd_value: number | null;
   allocation_pct: number | null;
+  avg_buy_price: number | null;
   venues: string[];
 }
 
 function fmtUsd(val: number | null): string {
   if (val == null) return "—";
   return `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Adaptive precision so a sub-cent avg price doesn't round away to $0.00. */
+function fmtAvgPrice(val: number | null): string {
+  if (val == null) return "—";
+  if (val >= 1) return `$${val.toFixed(2)}`;
+  if (val >= 0.01) return `$${val.toFixed(4)}`;
+  return `$${val.toFixed(6)}`;
 }
 
 function fmtAmount(val: number | null): string {
@@ -48,6 +58,11 @@ function addNullable(a: number | null, b: number | null): number | null {
 
 function combine(exchanges: SharedExchange[]): Row[] {
   const byAsset = new Map<string, Row>();
+  // Average buy price isn't additive across venues — it needs a weighted
+  // average (weight by amount; equal weight when amounts are hidden/absent),
+  // tracked separately and folded in once every venue has been seen.
+  const avgWeight = new Map<string, { num: number; den: number; any: boolean }>();
+
   for (const ex of exchanges) {
     for (const a of ex.assets) {
       const existing = byAsset.get(a.asset);
@@ -59,8 +74,23 @@ function combine(exchanges: SharedExchange[]): Row[] {
       } else {
         byAsset.set(a.asset, { ...a, venues: [ex.exchange_name] });
       }
+
+      if (a.avg_buy_price != null) {
+        const weight = a.amount != null && a.amount > 0 ? a.amount : 1;
+        const acc = avgWeight.get(a.asset) ?? { num: 0, den: 0, any: false };
+        acc.num += a.avg_buy_price * weight;
+        acc.den += weight;
+        acc.any = true;
+        avgWeight.set(a.asset, acc);
+      }
     }
   }
+
+  byAsset.forEach((row, asset) => {
+    const acc = avgWeight.get(asset);
+    row.avg_buy_price = acc && acc.any && acc.den > 0 ? acc.num / acc.den : null;
+  });
+
   return Array.from(byAsset.values());
 }
 
@@ -78,7 +108,14 @@ function sortRows(rows: Row[], key: SortKey, dir: SortDir): Row[] {
     // a wall of them and bury what the viewer came to see.
     if (byMoney && isUnpriced(a) !== isUnpriced(b)) return isUnpriced(a) ? 1 : -1;
     if (key === "asset") return sign * a.asset.localeCompare(b.asset);
-    const field = key === "amount" ? "amount" : key === "allocation" ? "allocation_pct" : "usd_value";
+    const field =
+      key === "amount"
+        ? "amount"
+        : key === "allocation"
+          ? "allocation_pct"
+          : key === "avgBuyPrice"
+            ? "avg_buy_price"
+            : "usd_value";
     const av = a[field];
     const bv = b[field];
     if (av == null && bv == null) return a.asset.localeCompare(b.asset);
@@ -93,6 +130,7 @@ export default function SharedHoldings({
   showCoinAmounts,
   showTotalValue,
   showAllocationPct,
+  showAvgBuyPrice,
 }: Props) {
   // With values hidden there is nothing to rank by, so fall back to A–Z.
   const [sortKey, setSortKey] = useState<SortKey>(showTotalValue ? "value" : "asset");
@@ -191,6 +229,7 @@ export default function SharedHoldings({
     ...(showCoinAmounts ? [{ key: "amount" as SortKey, label: "Amount" }] : []),
     ...(showTotalValue ? [{ key: "value" as SortKey, label: "Value" }] : []),
     ...(showAllocationPct ? [{ key: "allocation" as SortKey, label: "Allocation" }] : []),
+    ...(showAvgBuyPrice ? [{ key: "avgBuyPrice" as SortKey, label: "Avg buy" }] : []),
   ];
 
   return (
@@ -293,13 +332,14 @@ export default function SharedHoldings({
             ) : (
               <table className="w-full text-xs sm:text-sm">
                 <thead>
-                  {/* Amount and Allocation collapse into the two remaining cells
-                      on a phone rather than pushing the table off-screen. */}
+                  {/* Amount, Allocation and Avg buy collapse into the two remaining
+                      cells on a phone rather than pushing the table off-screen. */}
                   <tr className="text-[11px] sm:text-xs border-b border-gray-800">
                     <SortHeader label="Asset" sortKey="asset" align="left" />
                     {showCoinAmounts && <SortHeader label="Amount" sortKey="amount" narrowHidden />}
                     {showTotalValue && <SortHeader label="Value" sortKey="value" />}
                     {showAllocationPct && <SortHeader label="Allocation" sortKey="allocation" narrowHidden={showTotalValue} />}
+                    {showAvgBuyPrice && <SortHeader label="Avg buy" sortKey="avgBuyPrice" narrowHidden />}
                   </tr>
                 </thead>
                 <tbody>
@@ -326,9 +366,14 @@ export default function SharedHoldings({
                               </span>
                             )}
                           </span>
-                          {showCoinAmounts && (
+                          {(showCoinAmounts || showAvgBuyPrice) && (
                             <span className="sm:hidden block text-[11px] text-gray-500 tabular-nums">
-                              {fmtAmount(row.amount)}
+                              {[
+                                showCoinAmounts ? fmtAmount(row.amount) : null,
+                                showAvgBuyPrice ? `avg ${fmtAvgPrice(row.avg_buy_price)}` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
                             </span>
                           )}
                         </td>
@@ -354,6 +399,11 @@ export default function SharedHoldings({
                             }`}
                           >
                             {fmtPct(row.allocation_pct)}
+                          </td>
+                        )}
+                        {showAvgBuyPrice && (
+                          <td className="hidden sm:table-cell px-4 sm:px-5 py-2.5 sm:py-3 text-right text-gray-400 tabular-nums">
+                            {fmtAvgPrice(row.avg_buy_price)}
                           </td>
                         )}
                       </tr>
