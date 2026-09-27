@@ -72,6 +72,7 @@ export interface ShareLink extends TradePermissions {
   show_coin_amounts: boolean;
   show_exchange_names: boolean;
   show_allocation_pct: boolean;
+  show_avg_buy_price: boolean;
   expires_at: string | null;
   is_active: boolean;
   label: string | null;
@@ -88,6 +89,7 @@ export interface ShareLinkCreate {
   show_coin_amounts: boolean;
   show_exchange_names: boolean;
   show_allocation_pct: boolean;
+  show_avg_buy_price?: boolean;
   expires_at: string | null;
   label: string | null;
   allow_follow?: boolean;
@@ -127,6 +129,7 @@ export interface SharedAsset {
   amount: number | null;
   usd_value: number | null;
   allocation_pct: number | null;
+  avg_buy_price: number | null;
 }
 
 export interface SharedExchange {
@@ -167,6 +170,7 @@ export interface SharedPortfolioView {
   show_coin_amounts: boolean;
   show_exchange_names: boolean;
   show_allocation_pct: boolean;
+  show_avg_buy_price: boolean;
   allow_follow: boolean;
   can_trade: boolean;
   trade_direction: TradeDirection;
@@ -175,4 +179,29 @@ export interface SharedPortfolioView {
   trade_daily_limit_usd: number | null;
   trade_spent_today_usd: number;
   tradable_exchanges: string[];
+}
+
+// ── Average buy price / cost basis ───────────────────────────────────────────
+
+export type CostBasisCoverage = "full" | "partial" | "none";
+
+export interface CostBasisAsset {
+  asset: string;
+  avg_buy_price: number | null;
+  bought_qty: number;
+  coverage: CostBasisCoverage;
+}
+
+export interface CostBasisExchange {
+  exchange: string;
+  // false when the venue can't provide trade history — never render anything
+  // for its assets even if some happen to carry stale coverage data.
+  supported: boolean;
+  assets: CostBasisAsset[];
+}
+
+export interface CostBasisResponse {
+  profile_id: number;
+  computed_at: string;
+  exchanges: CostBasisExchange[];
 }

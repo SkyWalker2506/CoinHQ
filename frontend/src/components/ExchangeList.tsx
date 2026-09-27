@@ -1,12 +1,38 @@
 "use client";
 
 import { useState } from "react";
-import type { ExchangeBalance } from "@/lib/types";
+import type { CostBasisResponse, ExchangeBalance } from "@/lib/types";
 import { EmptyState } from "./EmptyState";
 
 interface Props {
   exchanges: ExchangeBalance[];
   onAddKey?: () => void;
+  // Fetched separately from the portfolio (it can be slow), so this is
+  // undefined while loading or when there's nothing to show — either way no
+  // avg-buy-price line is rendered until real data is in hand.
+  costBasis?: CostBasisResponse | null;
+}
+
+interface AvgBuyInfo {
+  avgBuyPrice: number;
+  partial: boolean;
+}
+
+/** (exchange, asset) -> avg buy info, skipping venues that can't provide trade history. */
+function buildCostBasisLookup(costBasis?: CostBasisResponse | null): Map<string, AvgBuyInfo> {
+  const map = new Map<string, AvgBuyInfo>();
+  if (!costBasis) return map;
+  for (const ex of costBasis.exchanges) {
+    if (!ex.supported) continue;
+    for (const a of ex.assets) {
+      if (a.coverage === "none" || a.avg_buy_price == null) continue;
+      map.set(`${ex.exchange}:${a.asset}`, {
+        avgBuyPrice: a.avg_buy_price,
+        partial: a.coverage === "partial",
+      });
+    }
+  }
+  return map;
 }
 
 function formatUsd(value: number): string {
@@ -23,14 +49,36 @@ function formatAmount(value: number): string {
   return value.toFixed(6);
 }
 
+/** Adaptive precision so a sub-cent avg price doesn't round away to $0.00. */
+function formatAvgPrice(value: number): string {
+  if (value >= 1) return `$${value.toFixed(2)}`;
+  if (value >= 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toFixed(6)}`;
+}
+
+const PARTIAL_COVERAGE_TITLE =
+  "Partial history: some of this holding came from deposits or older trades";
+
+function UnrealizedChange({ pct }: { pct: number }) {
+  const positive = pct >= 0;
+  return (
+    <span className={`text-xs font-medium ${positive ? "text-green-400" : "text-red-400"}`}>
+      {positive ? "+" : ""}
+      {(pct * 100).toFixed(1)}%
+    </span>
+  );
+}
+
 function ExchangeItem({
   exchange,
   total,
   search,
+  costBasisLookup,
 }: {
   exchange: ExchangeBalance;
   total: number;
   search: string;
+  costBasisLookup: Map<string, AvgBuyInfo>;
 }) {
   const [showAll, setShowAll] = useState(false);
 
@@ -71,6 +119,14 @@ function ExchangeItem({
 
           const noPriceBadge = (balance.usd_value === 0 || balance.usd_value === undefined);
 
+          const avgInfo = costBasisLookup.get(`${exchange.exchange}:${balance.asset}`);
+          // Unrealised change vs current price: (usd_value / total) is the
+          // current per-unit price, compared against the average buy price.
+          const currentPrice =
+            balance.usd_value && balance.total > 0 ? balance.usd_value / balance.total : null;
+          const unrealizedPct =
+            avgInfo && currentPrice != null ? currentPrice / avgInfo.avgBuyPrice - 1 : null;
+
           return (
             <div
               key={balance.asset}
@@ -88,6 +144,14 @@ function ExchangeItem({
                     )}
                   </p>
                   <p className="text-xs text-gray-500">{formatAmount(balance.total)}</p>
+                  {avgInfo && (
+                    <p
+                      className="text-xs text-gray-500"
+                      title={avgInfo.partial ? PARTIAL_COVERAGE_TITLE : undefined}
+                    >
+                      {avgInfo.partial && "~"}Avg {formatAvgPrice(avgInfo.avgBuyPrice)}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="text-right shrink-0 ml-4">
@@ -95,6 +159,7 @@ function ExchangeItem({
                   {balance.usd_value ? formatUsd(balance.usd_value) : "—"}
                 </p>
                 {pct && !noPriceBadge && <p className="text-xs text-gray-500">{pct}%</p>}
+                {unrealizedPct != null && <UnrealizedChange pct={unrealizedPct} />}
               </div>
             </div>
           );
@@ -122,9 +187,10 @@ const EXCHANGE_LABELS: Record<string, string> = {
   kraken: "KRK",
 };
 
-export default function ExchangeList({ exchanges, onAddKey }: Props) {
+export default function ExchangeList({ exchanges, onAddKey, costBasis }: Props) {
   const [search, setSearch] = useState("");
   const [activeExchange, setActiveExchange] = useState<string | null>(null);
+  const costBasisLookup = buildCostBasisLookup(costBasis);
 
   if (exchanges.length === 0) {
     return (
@@ -204,7 +270,13 @@ export default function ExchangeList({ exchanges, onAddKey }: Props) {
 
       <div className="space-y-3">
         {filtered.map((exchange, idx) => (
-          <ExchangeItem key={idx} exchange={exchange} total={total} search={search} />
+          <ExchangeItem
+            key={idx}
+            exchange={exchange}
+            total={total}
+            search={search}
+            costBasisLookup={costBasisLookup}
+          />
         ))}
       </div>
     </div>

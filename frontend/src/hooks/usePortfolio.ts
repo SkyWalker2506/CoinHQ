@@ -1,5 +1,5 @@
 import useSWR from 'swr'
-import type { TradeOrder, PortfolioSnapshot, PnlResponse } from '@/lib/types'
+import type { TradeOrder, PortfolioSnapshot, PnlResponse, CostBasisResponse } from '@/lib/types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -29,6 +29,18 @@ export function usePortfolioHistory(profileId: number | null, days: number = 30)
     fetcher
   )
   return { history: data, error, isLoading }
+}
+
+// Cost basis / average buy price. It can take seconds to compute on the
+// backend, so it is fetched independently of the portfolio (never blocks the
+// dashboard) and changes slowly — no focus/interval revalidation storms.
+export function useCostBasis(profileId: number | null) {
+  const { data, error, isLoading } = useSWR<CostBasisResponse>(
+    profileId != null ? `${BASE_URL}/api/v1/portfolio/profile/${profileId}/cost-basis` : null,
+    fetcher,
+    { revalidateOnFocus: false, revalidateIfStale: false }
+  )
+  return { costBasis: data, error, isLoading }
 }
 
 export function useProfilePnl(profileId: number | null) {

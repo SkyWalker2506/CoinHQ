@@ -118,6 +118,7 @@ export default async function SharePage({
           showCoinAmounts={data.show_coin_amounts}
           showTotalValue={data.show_total_value}
           showAllocationPct={data.show_allocation_pct}
+          showAvgBuyPrice={data.show_avg_buy_price}
         />
 
         <p className="text-center text-xs text-gray-600 mt-8">

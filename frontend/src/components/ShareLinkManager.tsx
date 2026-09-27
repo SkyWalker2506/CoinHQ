@@ -182,6 +182,7 @@ export default function ShareLinkManager({ profiles, tradeKeyProfileIds = [] }: 
                       link.show_coin_amounts && "amounts",
                       link.show_exchange_names && "exchanges",
                       link.show_allocation_pct && "%",
+                      link.show_avg_buy_price && "avg buy",
                     ]
                       .filter(Boolean)
                       .join(", ")}

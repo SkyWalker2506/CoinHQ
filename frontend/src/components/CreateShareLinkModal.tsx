@@ -24,6 +24,7 @@ export default function CreateShareLinkModal({ profileId, hasTradeKey = false, o
   const [showCoinAmounts, setShowCoinAmounts] = useState(false);
   const [showExchangeNames, setShowExchangeNames] = useState(false);
   const [showAllocationPct, setShowAllocationPct] = useState(true);
+  const [showAvgBuyPrice, setShowAvgBuyPrice] = useState(false);
   const [allowFollow, setAllowFollow] = useState(true);
   const [durationDays, setDurationDays] = useState<number | null>(null);
   const [label, setLabel] = useState("");
@@ -66,6 +67,7 @@ export default function CreateShareLinkModal({ profileId, hasTradeKey = false, o
         show_coin_amounts: showCoinAmounts,
         show_exchange_names: showExchangeNames,
         show_allocation_pct: showAllocationPct,
+        show_avg_buy_price: showAvgBuyPrice,
         expires_at: expiresAt,
         label: label.trim() || null,
         allow_follow: allowFollow,
@@ -102,6 +104,7 @@ export default function CreateShareLinkModal({ profileId, hasTradeKey = false, o
             { label: "Show coin amounts", value: showCoinAmounts, set: setShowCoinAmounts },
             { label: "Show exchange names", value: showExchangeNames, set: setShowExchangeNames },
             { label: "Show allocation %", value: showAllocationPct, set: setShowAllocationPct },
+            { label: "Show average buy price", value: showAvgBuyPrice, set: setShowAvgBuyPrice },
           { label: "Allow others to follow this portfolio", value: allowFollow, set: setAllowFollow },
           ].map(({ label, value, set }) => (
             <label key={label} className="flex items-center gap-3 cursor-pointer">
