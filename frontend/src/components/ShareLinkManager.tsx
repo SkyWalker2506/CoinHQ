@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getShareLinks, revokeShareLink } from "@/lib/api";
+import { getShareLinks, revokeShareLink, updateShareLink } from "@/lib/api";
 import type { Profile, ShareLink } from "@/lib/types";
 import CreateShareLinkModal from "./CreateShareLinkModal";
 import EditTradeModal from "./EditTradeModal";
@@ -49,6 +49,25 @@ export default function ShareLinkManager({ profiles, tradeKeyProfileIds = [] }: 
     loadLinks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProfileId]);
+
+  const [toggleError, setToggleError] = useState<string | null>(null);
+
+  // Links already shared can have the average buy price switched on or off in
+  // place; the public page reads flags live, so the holder sees the change
+  // without a new link. Optimistic, rolled back if the save fails.
+  const toggleAvgBuyPrice = async (link: ShareLink) => {
+    const next = !link.show_avg_buy_price;
+    setToggleError(null);
+    setLinks((prev) => prev.map((l) => (l.id === link.id ? { ...l, show_avg_buy_price: next } : l)));
+    try {
+      await updateShareLink(link.id, { show_avg_buy_price: next });
+    } catch {
+      setLinks((prev) =>
+        prev.map((l) => (l.id === link.id ? { ...l, show_avg_buy_price: !next } : l))
+      );
+      setToggleError("Couldn't update the link. Please try again.");
+    }
+  };
 
   const handleRevoke = (id: number) => {
     setRevokeTarget(id);
@@ -139,6 +158,12 @@ export default function ShareLinkManager({ profiles, tradeKeyProfileIds = [] }: 
       )}
 
       {/* Links list */}
+      {toggleError && (
+        <p role="alert" className="mb-3 text-xs text-red-400">
+          {toggleError}
+        </p>
+      )}
+
       {links.length === 0 ? (
         <p className="text-sm text-gray-500 py-6 text-center">No active share links.</p>
       ) : (
@@ -197,6 +222,19 @@ export default function ShareLinkManager({ profiles, tradeKeyProfileIds = [] }: 
                   className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-xs text-white rounded-lg transition-colors"
                 >
                   {copied === link.token ? "Copied!" : "Copy URL"}
+                </button>
+                <button
+                  onClick={() => toggleAvgBuyPrice(link)}
+                  aria-pressed={link.show_avg_buy_price}
+                  aria-label={`${link.show_avg_buy_price ? "Hide" : "Show"} average buy price on ${link.label || "share link"}`}
+                  title="Show each coin's average buy price on this link"
+                  className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                    link.show_avg_buy_price
+                      ? "border-blue-500/60 bg-blue-500/15 text-blue-300"
+                      : "border-gray-700 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  Avg buy {link.show_avg_buy_price ? "on" : "off"}
                 </button>
                 <button
                   onClick={() => setEditTradeLink(link)}
