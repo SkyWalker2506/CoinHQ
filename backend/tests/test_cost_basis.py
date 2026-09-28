@@ -77,8 +77,49 @@ async def test_default_get_fills_is_unsupported():
     assert await _Bare("k", "s").get_fills(["BTC"]) is None
 
 
-async def test_binancetr_is_unsupported():
-    assert await BinanceTRAdapter("k", "s").get_fills(["BTC"]) is None
+def _tr_trade(tid, qty="10", price="5", buyer=1, fee="0.01", fee_asset="UNI", ts=1_700_000_000_000):
+    return {"tradeId": tid, "qty": qty, "price": price, "isBuyer": buyer,
+            "commission": fee, "commissionAsset": fee_asset, "time": ts + tid}
+
+
+def _tr(pages_by_symbol):
+    def handler(url, kwargs):
+        q = _query(url, kwargs)
+        pages = pages_by_symbol.get(q["symbol"])
+        if pages is None:
+            return _resp({"code": 3210, "msg": "Invalid symbol"})
+        page = pages[0] if "fromId" not in q else pages[1]
+        return _resp({"code": 0, "data": {"list": page}})
+    return handler
+
+
+async def test_binancetr_fills_parse_usdt_trades_and_skip_try_and_stables():
+    client = _client(_tr({"UNI_USDT": [[_tr_trade(1), _tr_trade(2, buyer=0, fee_asset="USDT")]]}))
+    fills = await BinanceTRAdapter("k", "s", http_client=client).get_fills(["UNI", "TRY", "USDT"])
+    assert [_query(u, kw)["symbol"] for u, kw in client.calls] == ["UNI_USDT"]
+    assert [(f.side, f.qty, f.quote_qty, f.fee_asset) for f in fills] == [
+        ("buy", 10.0, 50.0, "UNI"), ("sell", 10.0, 50.0, "USDT")
+    ]
+
+
+async def test_binancetr_fills_page_forward_by_trade_id(monkeypatch):
+    import app.exchanges.binancetr as tr
+    monkeypatch.setattr(tr, "_FILL_PAGE_LIMIT", 2)
+    client = _client(_tr({"UNI_USDT": [[_tr_trade(1), _tr_trade(2)], [_tr_trade(3)]]}))
+    fills = await BinanceTRAdapter("k", "s", http_client=client).get_fills(["UNI"])
+    assert len(fills) == 3
+    assert _query(*client.calls[1])["fromId"] == "2"
+
+
+async def test_binancetr_unlisted_symbol_contributes_nothing():
+    client = _client(_tr({"UNI_USDT": [[_tr_trade(1)]]}))
+    fills = await BinanceTRAdapter("k", "s", http_client=client).get_fills(["UNI", "NOPE"])
+    assert {f.asset for f in fills} == {"UNI"}
+
+
+async def test_binancetr_fills_return_none_when_every_symbol_fails():
+    client = _client(lambda url, kw: _resp({}, status=500))
+    assert await BinanceTRAdapter("k", "s", http_client=client).get_fills(["UNI"]) is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -657,14 +698,12 @@ async def test_service_caches_a_failed_venue_only_briefly(_no_decrypt):
 
 
 async def test_service_caches_a_genuinely_unsupported_venue_normally(_no_decrypt):
-    """Binance TR never has fills here; recomputing it every minute buys nothing."""
-    from app.exchanges.binancetr import BinanceTRAdapter
-
+    """A venue without trade history never has fills; recomputing it every minute buys nothing."""
     portfolio = _portfolio({"binancetr": [_bal("BTC", 1, 60000)]})
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
     with patch.object(cost_basis_service, "get_portfolio", AsyncMock(return_value=portfolio)), \
-         patch.object(cost_basis_service, "get_adapter", return_value=BinanceTRAdapter("k", "s")):
+         patch.object(cost_basis_service, "get_adapter", return_value=_Bare("k", "s")):
         result = await get_cost_basis(1, "p", [_key("binancetr")], redis=redis)
     assert result.exchanges[0].supported is False
     assert redis.setex.await_args.args[1] == cost_basis_service.COST_BASIS_CACHE_TTL
